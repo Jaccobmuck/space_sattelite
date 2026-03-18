@@ -35,7 +35,7 @@ function latLngToVector3(lat: number, lng: number, alt: number) {
 
 function SatelliteMarkers() {
   const meshRef = useRef<InstancedMesh>(null);
-  const { satellites, selectSatellite, selectedSatellite } = useAppStore();
+  const { satellites, selectSatellite, selectedSatellite, searchHighlightId } = useAppStore();
   const dummy = useMemo(() => new Object3D(), []);
 
   const geometry = useMemo(() => new SphereGeometry(0.008, 8, 8), []);
@@ -68,8 +68,10 @@ function SatelliteMarkers() {
     }
   }, [satellites, dummy]);
 
-  useFrame(() => {
+  useFrame((state) => {
     if (!meshRef.current || satellites.length === 0) return;
+
+    const time = state.clock.getElapsedTime();
 
     satellites.forEach((sat, i) => {
       const pos = latLngToVector3(sat.lat, sat.lng, sat.alt);
@@ -79,13 +81,27 @@ function SatelliteMarkers() {
       if (selectedSatellite?.noradId === sat.noradId) {
         scale *= 1.5;
       }
+      // Pulsing effect for search highlight
+      if (searchHighlightId === sat.noradId) {
+        scale *= 1.5 + 0.3 * Math.sin(time * 5);
+      }
       dummy.scale.setScalar(scale);
       dummy.updateMatrix();
 
       meshRef.current!.setMatrixAt(i, dummy.matrix);
+
+      // Change color for highlighted satellite
+      if (searchHighlightId === sat.noradId) {
+        meshRef.current!.setColorAt(i, new Color('#ffffff'));
+      } else {
+        meshRef.current!.setColorAt(i, new Color(CATEGORY_COLORS[sat.category]));
+      }
     });
 
     meshRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) {
+      meshRef.current.instanceColor.needsUpdate = true;
+    }
   });
 
   const handleClick = (event: { instanceId?: number }) => {

@@ -108,3 +108,21 @@ export interface ImageryItem {
   description?: string;
   type: 'weather' | 'earth_observation';
 }
+
+export interface GroundTrackPoint {
+  lat: number;
+  lng: number;
+  alt: number;
+  time: Date;
+}
+
+export interface GroundTrack {
+  past: GroundTrackPoint[];
+  future: GroundTrackPoint[];
+}
+
+export interface PinnedSatellite {
+  satellite: Satellite;
+  color: string;
+  groundTrack: GroundTrack | null;
+}

@@ -1,11 +1,12 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/appStore';
 import { useImagery, useHasImagery } from '../../hooks/useImagery';
+import { getOrbitalElements, getTLEEpochAge } from '../../utils/orbital';
 import type { ImageryItem } from '../../types';
 
 function SatellitePanel() {
-  const { selectedSatellite, activePanel, selectSatellite } = useAppStore();
+  const { selectedSatellite, activePanel, selectSatellite, setActivePanel, pinSatellite, unpinSatellite, pinnedSatellites } = useAppStore();
   const [showImagery, setShowImagery] = useState(false);
   const [selectedImage, setSelectedImage] = useState<ImageryItem | null>(null);
 
@@ -19,7 +20,24 @@ function SatellitePanel() {
     showImagery ? selectedSatellite?.name ?? null : null
   );
 
-  const isOpen = activePanel === 'satellite' && selectedSatellite !== null;
+  // Redirect to ISS panel if ISS is selected
+  useEffect(() => {
+    if (selectedSatellite?.noradId === 25544) {
+      setActivePanel('iss');
+    }
+  }, [selectedSatellite, setActivePanel]);
+
+  // Get orbital elements for eccentricity
+  const orbitalElements = selectedSatellite?.tle1 && selectedSatellite?.tle2
+    ? getOrbitalElements(selectedSatellite.tle1, selectedSatellite.tle2)
+    : null;
+
+  // Get TLE epoch age
+  const tleEpochAge = selectedSatellite?.tle1
+    ? getTLEEpochAge(selectedSatellite.tle1)
+    : 0;
+
+  const isOpen = activePanel === 'satellite' && selectedSatellite !== null && selectedSatellite.noradId !== 25544;
 
   return (
     <AnimatePresence>
@@ -49,15 +67,43 @@ function SatellitePanel() {
             <DataRow label="VELOCITY" value={`${selectedSatellite.velocity.toFixed(2)} km/s`} />
             <DataRow label="PERIOD" value={`${selectedSatellite.period.toFixed(1)} min`} />
             <DataRow label="INCLINATION" value={`${selectedSatellite.inclination.toFixed(1)}°`} />
+            {orbitalElements && (
+              <DataRow label="ECCENTRICITY" value={orbitalElements.eccentricity.toFixed(6)} />
+            )}
             <DataRow label="OWNER" value={selectedSatellite.owner} />
             <DataRow label="LATITUDE" value={`${selectedSatellite.lat.toFixed(4)}°`} />
             <DataRow label="LONGITUDE" value={`${selectedSatellite.lng.toFixed(4)}°`} />
+            <div className="flex justify-between items-center py-1 border-b border-border-glow/30">
+              <span className="text-text-secondary text-xs">TLE EPOCH AGE</span>
+              <span className={`font-orbitron text-sm ${tleEpochAge > 7 ? 'text-accent-red' : 'text-text-primary'}`}>
+                {tleEpochAge.toFixed(1)} days
+                {tleEpochAge > 7 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-accent-red/20 text-accent-red text-xs rounded">
+                    STALE
+                  </span>
+                )}
+              </span>
+            </div>
           </div>
 
           <div className="mt-6 flex gap-2">
-            <button className="flex-1 px-3 py-2 bg-accent-blue/20 border border-accent-blue/50 rounded font-orbitron text-xs text-accent-blue hover:bg-accent-blue/30 transition-colors">
-              TRACK
-            </button>
+            {(() => {
+              const isPinned = pinnedSatellites.some(p => p.satellite.noradId === selectedSatellite.noradId);
+              const pinnedData = pinnedSatellites.find(p => p.satellite.noradId === selectedSatellite.noradId);
+              return (
+                <button
+                  onClick={() => isPinned ? unpinSatellite(selectedSatellite.noradId) : pinSatellite(selectedSatellite)}
+                  className={`flex-1 px-3 py-2 rounded font-orbitron text-xs transition-colors ${
+                    isPinned
+                      ? 'bg-accent-red/20 border border-accent-red/50 text-accent-red hover:bg-accent-red/30'
+                      : 'bg-accent-purple/20 border border-accent-purple/50 text-accent-purple hover:bg-accent-purple/30'
+                  }`}
+                  style={isPinned && pinnedData ? { borderColor: pinnedData.color, color: pinnedData.color } : {}}
+                >
+                  {isPinned ? '📌 UNPIN' : '📌 PIN'}
+                </button>
+              );
+            })()}
             <button className="flex-1 px-3 py-2 bg-accent-green/20 border border-accent-green/50 rounded font-orbitron text-xs text-accent-green hover:bg-accent-green/30 transition-colors">
               PASSES
             </button>

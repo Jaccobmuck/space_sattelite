@@ -41,6 +41,73 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
+router.get('/category/:group', async (req: Request, res: Response) => {
+  try {
+    const group = req.params.group.toLowerCase();
+    const tleData = await getTLEData();
+
+    // Map group names to categories
+    const groupToCategoryMap: Record<string, string[]> = {
+      'stations': ['iss'],
+      'starlink': ['comm'], // Filter by name below
+      'gps': ['nav'],
+      'weather': ['weather'],
+      'amateur': ['science'], // Amateur radio satellites
+      'debris': ['debris'],
+    };
+
+    const categories = groupToCategoryMap[group] || [];
+
+    let filteredData = tleData;
+
+    if (group === 'starlink') {
+      filteredData = tleData.filter((sat) => 
+        sat.name.toLowerCase().includes('starlink')
+      );
+    } else if (group === 'stations') {
+      filteredData = tleData.filter((sat) => 
+        sat.category === 'iss' || 
+        sat.name.toLowerCase().includes('tiangong') ||
+        sat.name.toLowerCase().includes('css')
+      );
+    } else if (categories.length > 0) {
+      filteredData = tleData.filter((sat) => categories.includes(sat.category));
+    }
+
+    const satellites = filteredData
+      .map((sat) => {
+        const position = propagateSatellite(sat.tle1, sat.tle2);
+        if (!position) return null;
+
+        return {
+          noradId: sat.noradId,
+          name: sat.name,
+          category: sat.category,
+          lat: position.lat,
+          lng: position.lng,
+          alt: position.alt,
+          velocity: position.velocity,
+          period: position.period,
+          inclination: position.inclination,
+          owner: sat.owner,
+          tle1: sat.tle1,
+          tle2: sat.tle2,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({
+      group,
+      count: satellites.length,
+      timestamp: new Date().toISOString(),
+      satellites,
+    });
+  } catch (error) {
+    console.error('Error fetching satellites by category:', error);
+    res.status(500).json({ error: 'Failed to fetch satellite data' });
+  }
+});
+
 router.get('/:noradId', async (req: Request, res: Response) => {
   try {
     const noradId = parseInt(req.params.noradId, 10);

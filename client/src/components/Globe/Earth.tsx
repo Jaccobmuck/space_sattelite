@@ -2,14 +2,19 @@ import { memo, useRef, useMemo } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import { TextureLoader, ShaderMaterial, Vector3 } from 'three';
 import type { Mesh, DirectionalLight } from 'three';
+import { earthVertexShader, earthFragmentShader } from './shaders/earthShader';
+import { useAppStore } from '../../store/appStore';
 
 function getSunPosition(date: Date): Vector3 {
+  // Calculate based on time of day and Earth's axial tilt
   const dayOfYear = Math.floor(
     (date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
   );
   const hour = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
   
+  // Sun longitude based on UTC time
   const sunLng = -((hour / 24) * 360 - 180);
+  // Sun declination (latitude) based on day of year - using astronomical formula
   const declination = 23.45 * Math.sin(((360 / 365) * (dayOfYear - 81)) * (Math.PI / 180));
   
   const phi = (90 - declination) * (Math.PI / 180);
@@ -23,63 +28,11 @@ function getSunPosition(date: Date): Vector3 {
   );
 }
 
-const earthVertexShader = `
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  
-  void main() {
-    vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
-    vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const earthFragmentShader = `
-  uniform sampler2D dayTexture;
-  uniform sampler2D nightTexture;
-  uniform vec3 sunDirection;
-  
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  varying vec3 vPosition;
-  
-  void main() {
-    vec3 dayColor = texture2D(dayTexture, vUv).rgb;
-    vec3 nightColor = texture2D(nightTexture, vUv).rgb;
-    
-    vec3 normal = normalize(vNormal);
-    float sunDot = dot(normal, normalize(sunDirection));
-    
-    // Smooth transition from night to day
-    float dayNightMix = smoothstep(-0.15, 0.25, sunDot);
-    
-    // Enhance city lights - boost brightness and add warm glow
-    float lightIntensity = length(nightColor);
-    vec3 cityLights = nightColor * 2.5;
-    // Add warm orange/yellow tint to city lights
-    cityLights += vec3(0.4, 0.25, 0.1) * lightIntensity * 1.5;
-    
-    // Dark base for night side (ocean/land without lights)
-    vec3 nightBase = vec3(0.02, 0.03, 0.05);
-    vec3 nightSide = nightBase + cityLights;
-    
-    // Apply day lighting
-    float diffuse = max(0.0, sunDot);
-    vec3 daySide = dayColor * (0.3 + 0.7 * diffuse);
-    
-    // Mix day and night
-    vec3 color = mix(nightSide, daySide, dayNightMix);
-    
-    gl_FragColor = vec4(color, 1.0);
-  }
-`;
-
 function Earth() {
   const meshRef = useRef<Mesh>(null);
   const cloudsRef = useRef<Mesh>(null);
   const sunRef = useRef<DirectionalLight>(null);
+  const simulatedTime = useAppStore((state) => state.simulatedTime);
   
   const [dayTexture, nightTexture, cloudsTexture] = useLoader(TextureLoader, [
     '/textures/earth_day.jpg',
@@ -100,8 +53,7 @@ function Earth() {
   }, [dayTexture, nightTexture]);
 
   useFrame(() => {
-    const now = new Date();
-    const sunPos = getSunPosition(now);
+    const sunPos = getSunPosition(simulatedTime);
     
     if (earthMaterial.uniforms) {
       earthMaterial.uniforms.sunDirection.value.copy(sunPos).normalize();

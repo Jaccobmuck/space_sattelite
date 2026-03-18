@@ -7,6 +7,10 @@ import Stars from './Stars';
 import SatelliteMarkers from './SatelliteMarkers';
 import Moon from './Moon';
 import UserLocationMarker from './UserLocationMarker';
+import GroundTrack from './GroundTrack';
+import CoverageFootprint from './CoverageFootprint';
+import OrbitalPlaneRing from './OrbitalPlaneRing';
+import PinnedSatelliteTracks from './PinnedSatelliteTracks';
 
 function Globe() {
   return (
@@ -29,6 +33,10 @@ function Globe() {
           <SatelliteMarkers />
           <UserLocationMarker />
           <Moon />
+          <GroundTrack />
+          <CoverageFootprint />
+          <OrbitalPlaneRing />
+          <PinnedSatelliteTracks />
         </Suspense>
       </Canvas>
     </div>

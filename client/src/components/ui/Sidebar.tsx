@@ -1,7 +1,17 @@
-import { memo, useState } from 'react';
+import { memo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAppStore } from '../../store/appStore';
+import { useAppStore, ConstellationFilter } from '../../store/appStore';
 import type { SatelliteCategory, Satellite } from '../../types';
+
+const CONSTELLATION_FILTERS: { id: ConstellationFilter; label: string; icon: string }[] = [
+  { id: 'all', label: 'All', icon: '🌐' },
+  { id: 'stations', label: 'Stations', icon: '🛸' },
+  { id: 'starlink', label: 'Starlink', icon: '📡' },
+  { id: 'gps', label: 'GPS', icon: '📍' },
+  { id: 'weather', label: 'Weather', icon: '🌤️' },
+  { id: 'amateur', label: 'Amateur', icon: '📻' },
+  { id: 'debris', label: 'Debris', icon: '💫' },
+];
 
 const IMAGERY_SATELLITE_IDS = new Set([
   41866, 43226, 51850, // GOES 16, 17, 18
@@ -30,10 +40,41 @@ const CATEGORY_FILTERS: { id: SatelliteCategory; label: string; color: string }[
 ];
 
 function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar, satellites, selectedSatellite } = useAppStore();
+  const { 
+    sidebarCollapsed, 
+    toggleSidebar, 
+    satellites, 
+    selectedSatellite,
+    constellationFilter,
+    setConstellationFilter,
+    setSearchHighlight,
+    selectSatellite,
+  } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilters, setActiveFilters] = useState<Set<SatelliteCategory>>(new Set());
   const [showImageryOnly, setShowImageryOnly] = useState(false);
+
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    
+    // If searching by NORAD ID, highlight the satellite
+    const noradId = parseInt(query, 10);
+    if (!isNaN(noradId) && query.length >= 4) {
+      const sat = satellites.find(s => s.noradId === noradId);
+      if (sat) {
+        setSearchHighlight(noradId);
+        return;
+      }
+    }
+    
+    // Clear highlight if not a valid NORAD ID search
+    setSearchHighlight(null);
+  }, [satellites, setSearchHighlight]);
+
+  const handleSatelliteClick = useCallback((sat: Satellite) => {
+    selectSatellite(sat);
+    setSearchHighlight(sat.noradId);
+  }, [selectSatellite, setSearchHighlight]);
 
   const toggleFilter = (category: SatelliteCategory) => {
     setActiveFilters((prev) => {
@@ -102,11 +143,33 @@ function Sidebar() {
             <div className="p-3 border-b border-border-glow">
               <input
                 type="text"
-                placeholder="Search satellites..."
+                placeholder="Search by name or NORAD ID..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="w-full px-3 py-2 bg-bg-primary border border-border-glow rounded text-sm text-text-primary placeholder-text-secondary focus:outline-none focus:border-accent-blue"
               />
+            </div>
+
+            <div className="p-3 border-b border-border-glow">
+              <h3 className="font-orbitron text-xs text-text-secondary mb-2 tracking-wider">
+                CONSTELLATIONS
+              </h3>
+              <div className="flex flex-wrap gap-1">
+                {CONSTELLATION_FILTERS.map((filter) => (
+                  <button
+                    key={filter.id}
+                    onClick={() => setConstellationFilter(filter.id)}
+                    className={`px-2 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                      constellationFilter === filter.id
+                        ? 'bg-accent-cyan text-white'
+                        : 'bg-bg-primary text-text-secondary hover:text-text-primary border border-border-glow'
+                    }`}
+                  >
+                    <span>{filter.icon}</span>
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="p-3 border-b border-border-glow">
@@ -171,7 +234,7 @@ function Sidebar() {
                           name={sat.name}
                           category={sat.category}
                           isSelected={selectedSatellite?.noradId === sat.noradId}
-                          onClick={() => useAppStore.getState().selectSatellite(sat)}
+                          onClick={() => handleSatelliteClick(sat)}
                         />
                       ))}
                       {filteredSatellites.length > 30 && (

@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { Satellite, PanelType, UserLocation } from '../types';
+import type { Satellite, PanelType, UserLocation, GroundTrack, PinnedSatellite } from '../types';
+
+const PIN_COLORS = ['#f87171', '#4ade80', '#a855f7']; // Red, Green, Purple
+
+export type TimeSpeed = 0 | 1 | 10 | 60 | 600;
+export type ConstellationFilter = 'all' | 'stations' | 'starlink' | 'gps' | 'weather' | 'amateur' | 'debris';
 
 interface AppState {
   selectedSatellite: Satellite | null;
@@ -10,6 +15,13 @@ interface AppState {
   satellites: Satellite[];
   isLoading: boolean;
   error: string | null;
+  groundTrack: GroundTrack | null;
+  simulatedTime: Date;
+  timeMultiplier: TimeSpeed;
+  lastRealTime: number;
+  constellationFilter: ConstellationFilter;
+  searchHighlightId: number | null;
+  pinnedSatellites: PinnedSatellite[];
 
   selectSatellite: (satellite: Satellite | null) => void;
   setActivePanel: (panel: PanelType) => void;
@@ -19,6 +31,15 @@ interface AppState {
   setSatellites: (satellites: Satellite[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setGroundTrack: (track: GroundTrack | null) => void;
+  setTimeMultiplier: (speed: TimeSpeed) => void;
+  advanceSimulatedTime: (deltaMs: number) => void;
+  resetSimulatedTime: () => void;
+  setConstellationFilter: (filter: ConstellationFilter) => void;
+  setSearchHighlight: (noradId: number | null) => void;
+  pinSatellite: (satellite: Satellite) => void;
+  unpinSatellite: (noradId: number) => void;
+  updatePinnedGroundTrack: (noradId: number, track: GroundTrack | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -30,11 +51,19 @@ export const useAppStore = create<AppState>((set) => ({
   satellites: [],
   isLoading: false,
   error: null,
+  groundTrack: null,
+  simulatedTime: new Date(),
+  timeMultiplier: 1 as TimeSpeed,
+  lastRealTime: Date.now(),
+  constellationFilter: 'all' as ConstellationFilter,
+  searchHighlightId: null,
+  pinnedSatellites: [],
 
   selectSatellite: (satellite) =>
     set({
       selectedSatellite: satellite,
       activePanel: satellite ? 'satellite' : null,
+      groundTrack: null,
     }),
 
   setActivePanel: (panel) =>
@@ -59,4 +88,68 @@ export const useAppStore = create<AppState>((set) => ({
   setLoading: (loading) => set({ isLoading: loading }),
 
   setError: (error) => set({ error }),
+
+  setGroundTrack: (track) => set({ groundTrack: track }),
+
+  setTimeMultiplier: (speed) =>
+    set({
+      timeMultiplier: speed,
+      lastRealTime: Date.now(),
+    }),
+
+  advanceSimulatedTime: (deltaMs) =>
+    set((state) => ({
+      simulatedTime: new Date(state.simulatedTime.getTime() + deltaMs * state.timeMultiplier),
+    })),
+
+  resetSimulatedTime: () =>
+    set({
+      simulatedTime: new Date(),
+      timeMultiplier: 1 as TimeSpeed,
+      lastRealTime: Date.now(),
+    }),
+
+  setConstellationFilter: (filter) => set({ constellationFilter: filter }),
+
+  setSearchHighlight: (noradId) => set({ searchHighlightId: noradId }),
+
+  pinSatellite: (satellite) =>
+    set((state) => {
+      // Check if already pinned
+      if (state.pinnedSatellites.some((p) => p.satellite.noradId === satellite.noradId)) {
+        return state;
+      }
+
+      // Get next available color
+      const usedColors = state.pinnedSatellites.map((p) => p.color);
+      const availableColor = PIN_COLORS.find((c) => !usedColors.includes(c)) || PIN_COLORS[0];
+
+      // If max 3 pinned, remove oldest
+      let newPinned = [...state.pinnedSatellites];
+      if (newPinned.length >= 3) {
+        newPinned = newPinned.slice(1);
+      }
+
+      newPinned.push({
+        satellite,
+        color: availableColor,
+        groundTrack: null,
+      });
+
+      return { pinnedSatellites: newPinned };
+    }),
+
+  unpinSatellite: (noradId) =>
+    set((state) => ({
+      pinnedSatellites: state.pinnedSatellites.filter(
+        (p) => p.satellite.noradId !== noradId
+      ),
+    })),
+
+  updatePinnedGroundTrack: (noradId, track) =>
+    set((state) => ({
+      pinnedSatellites: state.pinnedSatellites.map((p) =>
+        p.satellite.noradId === noradId ? { ...p, groundTrack: track } : p
+      ),
+    })),
 }));
