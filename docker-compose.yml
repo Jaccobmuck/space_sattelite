@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - CELESTRAK_BASE_URL=https://celestrak.org
+      - OPEN_NOTIFY_URL=http://api.open-notify.org
+      - SWPC_BASE_URL=https://services.swpc.noaa.gov
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development services (optional)
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    ports:
+      - "5173:5173"
+      - "3001:3001"
+    volumes:
+      - ./client/src:/app/client/src
+      - ./server/src:/app/server/src
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+    profiles:
+      - dev

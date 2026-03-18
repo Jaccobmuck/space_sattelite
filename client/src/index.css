@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #020817;
+  --bg-secondary: #0a1628;
+  --bg-panel: rgba(10, 22, 40, 0.85);
+  --border-glow: rgba(56, 189, 248, 0.3);
+  --text-primary: #e2e8f0;
+  --text-secondary: #64748b;
+  --accent-blue: #38bdf8;
+  --accent-cyan: #22d3ee;
+  --accent-green: #4ade80;
+  --accent-orange: #fb923c;
+  --accent-red: #f87171;
+  --glow-blue: 0 0 20px rgba(56, 189, 248, 0.4);
+  --glow-green: 0 0 20px rgba(74, 222, 128, 0.4);
+  --glow-cyan: 0 0 20px rgba(34, 211, 238, 0.4);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-glow);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-blue);
+}
+
+/* Glow effects */
+.glow-border {
+  border: 1px solid var(--border-glow);
+  box-shadow: var(--glow-blue), inset 0 0 20px rgba(56, 189, 248, 0.05);
+}
+
+.glow-text {
+  text-shadow: 0 0 10px var(--accent-blue);
+}
+
+/* Glassmorphism panel */
+.glass-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glow);
+}
+
+/* Pulse animation for status indicators */
+.pulse-dot {
+  animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+/* Data value styling */
+.data-value {
+  font-family: 'Orbitron', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Button hover glow */
+.btn-glow {
+  transition: all 0.3s ease;
+}
+
+.btn-glow:hover {
+  box-shadow: var(--glow-blue);
+  border-color: var(--accent-blue);
+}
+
+/* Category colors */
+.category-weather { color: var(--accent-blue); }
+.category-comm { color: var(--accent-orange); }
+.category-nav { color: var(--accent-green); }
+.category-iss { color: var(--accent-red); }
+.category-science { color: var(--accent-cyan); }
+.category-debris { color: var(--text-secondary); }

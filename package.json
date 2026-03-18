@@ -1,0 +1,25 @@
+{
+  "name": "sentry-satellite-tracker",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Real-time satellite tracking web application with 3D globe interface",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "build": "cd client && npm run build && cd ../server && npm run build",
+    "start": "cd server && npm run start",
+    "setup:textures": "node scripts/download-textures.js",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "lint": "cd client && npm run lint",
+    "typecheck": "cd client && npm run typecheck && cd ../server && npm run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  }
+}
