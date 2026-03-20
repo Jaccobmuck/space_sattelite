@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, requirePro = false }: Protect
   const accessToken = useAuthStore((s) => s.accessToken);
 
   if (!accessToken || !user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (requirePro && user.plan !== 'pro') {

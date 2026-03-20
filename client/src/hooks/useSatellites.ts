@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import * as satellite from 'satellite.js';
 import { useAppStore } from '../store/appStore';
+import { useAuthStore } from '../store/authStore';
 import type { Satellite } from '../types';
 import api from '../lib/api';
 
@@ -21,10 +22,11 @@ export function useSatellites() {
   const setSatrecMap = useAppStore((state) => state.setSatrecMap);
   const setLoading = useAppStore((state) => state.setLoading);
   const setError = useAppStore((state) => state.setError);
+  const plan = useAuthStore((s) => s.user?.plan ?? 'free');
   const lastTleHashRef = useRef<string>('');
 
   const query = useQuery({
-    queryKey: ['satellites'],
+    queryKey: ['satellites', plan],
     queryFn: fetchSatellites,
     refetchInterval: 120000,
     staleTime: 60000,

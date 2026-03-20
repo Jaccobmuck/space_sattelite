@@ -92,6 +92,14 @@ export default function LoginPage() {
               Register
             </Link>
           </p>
+
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="w-full text-text-secondary/60 hover:text-text-secondary text-sm py-1 transition-colors"
+          >
+            Continue without signing in →
+          </button>
         </form>
       </div>
     </div>
