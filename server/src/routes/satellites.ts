@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { getTLEData } from '../services/tleService.js';
 import { propagateSatellite, propagateOrbit } from '../services/propagationService.js';
+import { optionalAuth, requireAuth, requirePro, type AuthRequest } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
-router.get('/', async (_req: Request, res: Response) => {
-  try {
+router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
     const tleData = await getTLEData();
 
     const satellites = tleData
@@ -30,16 +31,17 @@ router.get('/', async (_req: Request, res: Response) => {
       })
       .filter(Boolean);
 
+    const isProUser = req.user?.plan === 'pro';
+    const result = isProUser ? satellites : satellites.slice(0, 10);
+
     res.json({
-      count: satellites.length,
+      count: result.length,
+      total: satellites.length,
+      limited: !isProUser,
       timestamp: new Date().toISOString(),
-      satellites,
+      satellites: result,
     });
-  } catch (error) {
-    console.error('Error fetching satellites:', error);
-    res.status(500).json({ error: 'Failed to fetch satellite data' });
-  }
-});
+}));
 
 router.get('/category/:group', async (req: Request, res: Response) => {
   try {
@@ -108,8 +110,7 @@ router.get('/category/:group', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/:noradId', async (req: Request, res: Response) => {
-  try {
+router.get('/:noradId', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, res: Response) => {
     const noradId = parseInt(req.params.noradId, 10);
     const tleData = await getTLEData();
 
@@ -142,10 +143,6 @@ router.get('/:noradId', async (req: Request, res: Response) => {
       tle2: sat.tle2,
       orbit,
     });
-  } catch (error) {
-    console.error('Error fetching satellite:', error);
-    res.status(500).json({ error: 'Failed to fetch satellite data' });
-  }
-});
+}));
 
 export default router;

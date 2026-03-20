@@ -1,6 +1,8 @@
 import { memo, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/appStore';
+import { useAuthStore } from '../../store/authStore';
 import type { PanelType } from '../../types';
 
 type LocationStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -14,6 +16,8 @@ const navItems: { id: PanelType; label: string; icon: string }[] = [
 
 function Navbar() {
   const { activePanel, setActivePanel, satellites, userLocation, setUserLocation } = useAppStore();
+  const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [utcTime, setUtcTime] = useState(new Date().toISOString().slice(11, 19));
   const [locationStatus, setLocationStatus] = useState<LocationStatus>(
     userLocation ? 'success' : 'idle'
@@ -140,6 +144,27 @@ function Navbar() {
             <span className="text-text-secondary text-xs mr-2">UTC</span>
             {utcTime}
           </div>
+
+          {user ? (
+            <motion.button
+              onClick={() => navigate('/account')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded text-sm bg-accent-blue/10 border border-accent-blue/30 text-accent-blue hover:bg-accent-blue/20 transition-colors"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {user.plan === 'pro' && <span>⭐</span>}
+              <span className="font-orbitron text-xs tracking-wide">ACCOUNT</span>
+            </motion.button>
+          ) : (
+            <motion.button
+              onClick={() => navigate('/login')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 border border-transparent transition-colors"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <span className="font-orbitron text-xs tracking-wide">SIGN IN</span>
+            </motion.button>
+          )}
         </div>
       </div>
     </nav>

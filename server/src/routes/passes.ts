@@ -1,6 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { getTLEData } from '../services/tleService.js';
 import { computePasses, Pass } from '../services/passService.js';
+import { requireAuth, requirePro, type AuthRequest } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
@@ -11,8 +13,7 @@ const BRIGHT_SATELLITES = [
   27424,
 ];
 
-router.get('/', async (req: Request, res: Response) => {
-  try {
+router.get('/', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, res: Response) => {
     const lat = parseFloat(req.query.lat as string);
     const lng = parseFloat(req.query.lng as string);
     const noradId = req.query.noradId ? parseInt(req.query.noradId as string, 10) : null;
@@ -68,10 +69,6 @@ router.get('/', async (req: Request, res: Response) => {
       passes: allPasses.slice(0, 20),
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('Error computing passes:', error);
-    res.status(500).json({ error: 'Failed to compute pass predictions' });
-  }
-});
+}));
 
 export default router;

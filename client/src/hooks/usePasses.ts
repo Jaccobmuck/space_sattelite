@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../store/appStore';
 import type { Pass } from '../types';
+import api from '../lib/api';
+import { AxiosError } from 'axios';
+import { useAuthStore } from '../store/authStore';
+import { UpgradeRequiredError } from '../lib/errors';
+
+export { UpgradeRequiredError } from '../lib/errors';
 
 interface PassesResponse {
   observer: { lat: number; lng: number };
@@ -23,28 +29,39 @@ async function fetchPasses(
     params.set('noradId', noradId.toString());
   }
 
-  const response = await fetch(`/api/passes?${params}`);
-
-  if (!response.ok) {
+  try {
+    const { data } = await api.get<PassesResponse>(`/api/passes?${params}`);
+    return data;
+  } catch (err) {
+    if (err instanceof AxiosError && (err.response?.status === 403 || err.response?.status === 401)) {
+      throw new UpgradeRequiredError('Pass Predictions');
+    }
     throw new Error('Failed to fetch pass predictions');
   }
-
-  return response.json();
 }
 
 export function usePasses(noradId?: number) {
   const userLocation = useAppStore((state) => state.userLocation);
+  const user = useAuthStore((s) => s.user);
+  const isPro = user?.plan === 'pro';
 
   return useQuery({
-    queryKey: ['passes', userLocation?.lat, userLocation?.lng, noradId],
+    queryKey: ['passes', userLocation?.lat, userLocation?.lng, noradId, isPro],
     queryFn: () => {
+      if (!isPro) {
+        throw new UpgradeRequiredError('Pass Predictions');
+      }
       if (!userLocation) {
         throw new Error('Location required for pass predictions');
       }
       return fetchPasses(userLocation.lat, userLocation.lng, noradId);
     },
-    enabled: !!userLocation,
-    refetchInterval: 5 * 60 * 1000,
+    enabled: !isPro || !!userLocation,
+    refetchInterval: isPro ? 5 * 60 * 1000 : false,
     staleTime: 2 * 60 * 1000,
+    retry: (failureCount, error) => {
+      if (error instanceof UpgradeRequiredError) return false;
+      return failureCount < 2;
+    },
   });
 }

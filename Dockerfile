@@ -1,6 +1,9 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+# Install build dependencies for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Copy package files
@@ -23,6 +26,9 @@ RUN cd server && npm run build
 # Production stage
 FROM node:20-alpine AS production
 
+# Install runtime dependencies for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app/server
 
 # Copy server package files and install production dependencies
@@ -34,9 +40,6 @@ COPY --from=builder /app/server/dist ./dist
 
 # Copy built client to server's public directory
 COPY --from=builder /app/client/dist ./public
-
-# Copy environment file
-COPY server/.env.example ./.env
 
 # Expose port
 EXPOSE 3001

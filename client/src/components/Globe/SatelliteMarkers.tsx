@@ -7,6 +7,7 @@ import {
   SphereGeometry,
   MeshBasicMaterial,
 } from 'three';
+import * as satellite from 'satellite.js';
 import { useAppStore } from '../../store/appStore';
 import type { SatelliteCategory } from '../../types';
 
@@ -35,7 +36,8 @@ function latLngToVector3(lat: number, lng: number, alt: number) {
 
 function SatelliteMarkers() {
   const meshRef = useRef<InstancedMesh>(null);
-  const { satellites, selectSatellite, selectedSatellite, searchHighlightId } = useAppStore();
+  const lastPanelUpdateRef = useRef<number>(0);
+  const { satellites, selectSatellite, selectedSatellite, searchHighlightId, satrecMap, simulatedTime, updateSelectedSatellitePosition } = useAppStore();
   const dummy = useMemo(() => new Object3D(), []);
 
   const geometry = useMemo(() => new SphereGeometry(0.008, 8, 8), []);
@@ -72,14 +74,53 @@ function SatelliteMarkers() {
     if (!meshRef.current || satellites.length === 0) return;
 
     const time = state.clock.getElapsedTime();
+    const now = Date.now();
+    const shouldUpdatePanel = now - lastPanelUpdateRef.current > 1000;
 
     satellites.forEach((sat, i) => {
-      const pos = latLngToVector3(sat.lat, sat.lng, sat.alt);
+      let lat = sat.lat;
+      let lng = sat.lng;
+      let alt = sat.alt;
+      let velocity = sat.velocity;
+
+      // Propagate position using SGP4 if satrec is available
+      const satrec = satrecMap.get(sat.noradId);
+      if (satrec) {
+        try {
+          const posVel = satellite.propagate(satrec, simulatedTime);
+          
+          // Check if propagation succeeded (returns false for decayed/invalid satellites)
+          if (posVel.position !== false && typeof posVel.position !== 'boolean') {
+            const posEci = posVel.position;
+            const gmst = satellite.gstime(simulatedTime);
+            const geodetic = satellite.eciToGeodetic(posEci, gmst);
+            
+            lat = satellite.degreesLat(geodetic.latitude);
+            lng = satellite.degreesLong(geodetic.longitude);
+            alt = geodetic.height;
+
+            // Calculate velocity if available
+            if (posVel.velocity !== false && typeof posVel.velocity !== 'boolean') {
+              const velEci = posVel.velocity;
+              velocity = Math.sqrt(velEci.x ** 2 + velEci.y ** 2 + velEci.z ** 2);
+            }
+          }
+        } catch {
+          // Propagation failed, use stored position
+        }
+      }
+
+      const pos = latLngToVector3(lat, lng, alt);
       dummy.position.set(pos.x, pos.y, pos.z);
 
       let scale = sat.category === 'iss' ? 3 : 1;
       if (selectedSatellite?.noradId === sat.noradId) {
         scale *= 1.5;
+
+        // Update selected satellite position in Zustand (throttled to 1/sec)
+        if (shouldUpdatePanel) {
+          updateSelectedSatellitePosition(lat, lng, alt, velocity);
+        }
       }
       // Pulsing effect for search highlight
       if (searchHighlightId === sat.noradId) {
@@ -97,6 +138,10 @@ function SatelliteMarkers() {
         meshRef.current!.setColorAt(i, new Color(CATEGORY_COLORS[sat.category]));
       }
     });
+
+    if (shouldUpdatePanel) {
+      lastPanelUpdateRef.current = now;
+    }
 
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) {

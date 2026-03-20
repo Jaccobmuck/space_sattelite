@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { SatRec } from 'satellite.js';
 import type { Satellite, PanelType, UserLocation, GroundTrack, PinnedSatellite } from '../types';
 
 const PIN_COLORS = ['#f87171', '#4ade80', '#a855f7']; // Red, Green, Purple
@@ -22,6 +23,7 @@ interface AppState {
   constellationFilter: ConstellationFilter;
   searchHighlightId: number | null;
   pinnedSatellites: PinnedSatellite[];
+  satrecMap: Map<number, SatRec>;
 
   selectSatellite: (satellite: Satellite | null) => void;
   setActivePanel: (panel: PanelType) => void;
@@ -40,6 +42,8 @@ interface AppState {
   pinSatellite: (satellite: Satellite) => void;
   unpinSatellite: (noradId: number) => void;
   updatePinnedGroundTrack: (noradId: number, track: GroundTrack | null) => void;
+  setSatrecMap: (map: Map<number, SatRec>) => void;
+  updateSelectedSatellitePosition: (lat: number, lng: number, alt: number, velocity: number) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -58,6 +62,7 @@ export const useAppStore = create<AppState>((set) => ({
   constellationFilter: 'all' as ConstellationFilter,
   searchHighlightId: null,
   pinnedSatellites: [],
+  satrecMap: new Map(),
 
   selectSatellite: (satellite) =>
     set({
@@ -152,4 +157,20 @@ export const useAppStore = create<AppState>((set) => ({
         p.satellite.noradId === noradId ? { ...p, groundTrack: track } : p
       ),
     })),
+
+  setSatrecMap: (map) => set({ satrecMap: map }),
+
+  updateSelectedSatellitePosition: (lat, lng, alt, velocity) =>
+    set((state) => {
+      if (!state.selectedSatellite) return state;
+      return {
+        selectedSatellite: {
+          ...state.selectedSatellite,
+          lat,
+          lng,
+          alt,
+          velocity,
+        },
+      };
+    }),
 }));

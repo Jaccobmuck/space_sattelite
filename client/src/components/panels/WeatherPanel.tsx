@@ -1,7 +1,8 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/appStore';
-import { useSpaceWeather } from '../../hooks/useSpaceWeather';
+import { useSpaceWeather, UpgradeRequiredError } from '../../hooks/useSpaceWeather';
+import UpgradeModal from '../ui/UpgradeModal';
 
 const LEVEL_COLORS: Record<string, string> = {
   quiet: 'text-accent-green',
@@ -15,7 +16,9 @@ const LEVEL_COLORS: Record<string, string> = {
 function WeatherPanel() {
   const { activePanel, setActivePanel } = useAppStore();
   const { data, isLoading, error } = useSpaceWeather();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
+  const isUpgradeRequired = error instanceof UpgradeRequiredError;
   const isOpen = activePanel === 'weather';
 
   return (
@@ -46,7 +49,22 @@ function WeatherPanel() {
             </div>
           )}
 
-          {error && (
+          {error && isUpgradeRequired && (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-3">🔒</div>
+              <p className="font-orbitron text-sm text-text-secondary mb-3">PRO FEATURE</p>
+              <p className="text-text-secondary text-sm mb-4">Space weather data requires a Pro subscription.</p>
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600/30 to-accent-blue/30 border border-purple-500/50 text-purple-300 font-orbitron text-xs tracking-wide rounded hover:from-purple-600/40 hover:to-accent-blue/40 transition-all"
+              >
+                UPGRADE TO PRO
+              </button>
+              <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} featureName="Space Weather" />
+            </div>
+          )}
+
+          {error && !isUpgradeRequired && (
             <div className="text-center py-8 text-accent-red">
               <p className="font-mono text-sm">Error loading weather data</p>
             </div>

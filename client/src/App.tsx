@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/ui/Navbar';
 import Sidebar from './components/ui/Sidebar';
 import LoadingScreen from './components/ui/LoadingScreen';
@@ -7,6 +8,11 @@ import TimeControls from './components/ui/TimeControls';
 import PinnedSatellitesStrip from './components/ui/PinnedSatellitesStrip';
 import { useSatellites } from './hooks/useSatellites';
 import { useAppStore } from './store/appStore';
+import AuthInitializer from './components/auth/AuthInitializer';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import AccountPage from './pages/AccountPage';
 
 const Globe = lazy(() => import('./components/Globe/Globe'));
 const SatellitePanel = lazy(() => import('./components/panels/SatellitePanel'));
@@ -52,9 +58,9 @@ function GeolocationLoader() {
   return null;
 }
 
-function App() {
+function TrackerView() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <>
       <SatelliteDataLoader />
       <GeolocationLoader />
       <div className="relative w-full h-full bg-bg-primary overflow-hidden">
@@ -77,7 +83,30 @@ function App() {
           </main>
         </div>
       </div>
-    </QueryClientProvider>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <AuthInitializer />
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <AccountPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<TrackerView />} />
+        </Routes>
+      </QueryClientProvider>
+    </BrowserRouter>
   );
 }
 

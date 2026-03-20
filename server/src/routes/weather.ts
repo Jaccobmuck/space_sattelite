@@ -1,5 +1,7 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import axios from 'axios';
+import { requireAuth, requirePro, type AuthRequest } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
@@ -13,8 +15,7 @@ interface XrayEntry {
   flux: number;
 }
 
-router.get('/space', async (_req: Request, res: Response) => {
-  try {
+router.get('/space', requireAuth, requirePro, asyncHandler(async (_req: AuthRequest, res: Response) => {
     const swpcBaseUrl = process.env.SWPC_BASE_URL || 'https://services.swpc.noaa.gov';
 
     const [kpResponse, xrayResponse] = await Promise.allSettled([
@@ -119,10 +120,6 @@ router.get('/space', async (_req: Request, res: Response) => {
       alerts,
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('Error fetching space weather:', error);
-    res.status(500).json({ error: 'Failed to fetch space weather data' });
-  }
-});
+}));
 
 export default router;
