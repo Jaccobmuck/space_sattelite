@@ -76,12 +76,12 @@ router.patch(
   requireAuth,
   body('display_name').optional().trim().isLength({ max: 50 }).withMessage('Display name must be 50 characters or less'),
   body('bio').optional().trim().isLength({ max: 160 }).withMessage('Bio must be 160 characters or less'),
-  body('avatar').optional().custom((value) => {
+  body('avatar').optional().custom(async (value) => {
     // Allow null to clear avatar
     if (value === null) return true;
     // Validate MIME type, base64 format, and decoded size
     if (value) {
-      const validation = validateBase64Image(value);
+      const validation = await validateBase64Image(value);
       if (!validation.valid) {
         throw new Error(validation.error || 'Invalid avatar image');
       }

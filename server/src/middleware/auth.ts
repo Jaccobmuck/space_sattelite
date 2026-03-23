@@ -27,6 +27,10 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
       res.status(401).json({ error: 'User profile not found' });
       return;
     }
+    if (profile.pending_deletion) {
+      res.status(403).json({ error: 'Account deletion in progress' });
+      return;
+    }
 
     req.user = profile;
     next();
@@ -51,7 +55,7 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
 
     if (!error && authUser) {
       const profile = await getProfileById(authUser.id);
-      if (profile) {
+      if (profile && !profile.pending_deletion) {
         req.user = profile;
       }
     }

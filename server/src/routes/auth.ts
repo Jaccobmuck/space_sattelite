@@ -83,6 +83,15 @@ router.post(
     }
 
     const profile = await getProfileById(data.user.id);
+    if (!profile) {
+      res.status(401).json({ error: 'User profile not found' });
+      return;
+    }
+    if (profile.pending_deletion) {
+      await supabaseAdmin.auth.admin.signOut(data.user.id);
+      res.status(403).json({ error: 'Account deletion in progress' });
+      return;
+    }
 
     res.cookie('accessToken', data.session.access_token, {
       ...cookieOptions,
@@ -117,6 +126,19 @@ router.post('/refresh', asyncHandler(async (req: AuthRequest, res: Response) => 
   }
 
   const profile = await getProfileById(data.user!.id);
+  if (!profile) {
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+    res.status(401).json({ error: 'User profile not found' });
+    return;
+  }
+  if (profile.pending_deletion) {
+    await supabaseAdmin.auth.admin.signOut(data.user!.id);
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+    res.status(403).json({ error: 'Account deletion in progress' });
+    return;
+  }
 
   res.cookie('accessToken', data.session.access_token, {
     ...cookieOptions,

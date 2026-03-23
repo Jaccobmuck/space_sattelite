@@ -1,8 +1,7 @@
 import { Router, Response } from 'express';
-import Stripe from 'stripe';
 import { body, validationResult } from 'express-validator';
 import { supabaseAdmin } from '../lib/supabase.js';
-import { getProfileByEmail, updateProfile, deleteProfile } from '../db/index.js';
+import { getProfileByEmail, markProfilePendingDeletion, updateProfile } from '../db/index.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { logger } from '../lib/logger.js';
@@ -152,67 +151,19 @@ router.delete(
       return;
     }
 
-    // Cancel ALL cancellable Stripe subscriptions - not just active ones
-    if (user.stripe_customer_id && process.env.STRIPE_SECRET_KEY) {
-      try {
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-          apiVersion: '2025-02-24.acacia' as Stripe.LatestApiVersion,
-        });
-        
-        // Get all subscriptions including trialing, past_due, unpaid, incomplete
-        const subscriptions = await stripe.subscriptions.list({
-          customer: user.stripe_customer_id,
-          status: 'all',
-        });
-        
-        // Cancel any subscription that can still bill the customer
-        const cancellableStatuses = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'];
-        const subscriptionsToCancel = subscriptions.data.filter((sub) =>
-          cancellableStatuses.includes(sub.status)
-        );
-        const cancellationResults = await Promise.allSettled(
-          subscriptionsToCancel.map(async (sub) => {
-            const canceled = await stripe.subscriptions.cancel(sub.id);
-            if (canceled.status !== 'canceled') {
-              throw new Error(`Subscription ${sub.id} not canceled, status: ${canceled.status}`);
-            }
-          })
-        );
-
-        const failedCancellations = cancellationResults.filter(
-          (result): result is PromiseRejectedResult => result.status === 'rejected'
-        );
-
-        if (failedCancellations.length > 0) {
-          throw new Error(
-            `Failed to cancel ${failedCancellations.length} of ${subscriptionsToCancel.length} subscriptions`
-          );
-        }
-      } catch (err) {
-        logger.error('Failed to cancel Stripe subscriptions during account deletion', {
-          userId: user.id,
-          stripeCustomerId: user.stripe_customer_id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        res.status(500).json({ 
-          error: 'Failed to cancel subscription. Please try again or contact support.',
-        });
-        return;
-      }
-    }
-
-    // Delete user from Supabase Auth (cascades to profiles) and verify result
-    const deleteResult = await deleteProfile(user.id);
-    if (!deleteResult.success) {
-      logger.error('Failed to delete user account', {
+    const markResult = await markProfilePendingDeletion(user.id);
+    if (!markResult.success) {
+      logger.error('Failed to mark user for pending deletion', {
         userId: user.id,
-        error: deleteResult.error,
+        error: markResult.error,
       });
-      res.status(500).json({ error: 'Failed to delete account. Please try again or contact support.' });
+      res.status(500).json({ error: 'Failed to queue account deletion. Please try again or contact support.' });
       return;
     }
 
-    res.json({ message: 'Account deleted.' });
+    await supabaseAdmin.auth.admin.signOut(user.id);
+
+    res.status(202).json({ message: 'Account deletion queued.' });
   })
 );
 

@@ -6,6 +6,8 @@ export interface Profile {
   email: string;
   plan: 'free' | 'pro';
   stripe_customer_id: string | null;
+  pending_deletion: boolean;
+  deletion_requested_at: string | null;
   username: string | null;
   display_name: string | null;
   avatar: string | null;
@@ -53,7 +55,7 @@ export async function getProfileByEmail(email: string): Promise<Profile | null> 
 }
 
 export type ProfileUpdateFields = Partial<Pick<Profile, 
-  'email' | 'plan' | 'stripe_customer_id' | 'username' | 'display_name' | 
+  'email' | 'plan' | 'stripe_customer_id' | 'pending_deletion' | 'deletion_requested_at' | 'username' | 'display_name' | 
   'avatar' | 'bio' | 'location_city' | 'location_region' | 'lat' | 'lng'
 >>;
 
@@ -115,6 +117,38 @@ export async function deleteProfile(userId: string): Promise<{ success: boolean;
     return { success: false, error: error.message };
   }
   return { success: true };
+}
+
+export async function markProfilePendingDeletion(userId: string): Promise<{ success: boolean; error?: string }> {
+  return updateProfile(userId, {
+    pending_deletion: true,
+    deletion_requested_at: new Date().toISOString(),
+  });
+}
+
+export async function clearProfilePendingDeletion(userId: string): Promise<{ success: boolean; error?: string }> {
+  return updateProfile(userId, {
+    pending_deletion: false,
+    deletion_requested_at: null,
+  });
+}
+
+export async function getPendingDeletionProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('pending_deletion', true)
+    .order('deletion_requested_at', { ascending: true });
+
+  if (error || !data) {
+    logger.error('Failed to fetch pending deletion profiles', {
+      code: error?.code,
+      message: error?.message,
+    });
+    return [];
+  }
+
+  return data as Profile[];
 }
 
 // ============================================

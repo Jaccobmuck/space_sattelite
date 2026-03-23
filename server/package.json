@@ -7,7 +7,11 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migrate": "node scripts/migrate.js up",
+    "migrate:make": "node scripts/migrate.js make",
+    "migrate:status": "node scripts/migrate.js status",
+    "migrate:rollback": "node scripts/migrate.js rollback"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",
@@ -22,6 +26,7 @@
     "morgan": "^1.10.1",
     "node-cron": "^3.0.3",
     "satellite.js": "^5.0.0",
+    "sharp": "^0.34.5",
     "stripe": "^20.4.1"
   },
   "devDependencies": {

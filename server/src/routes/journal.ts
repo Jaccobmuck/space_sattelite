@@ -30,9 +30,9 @@ router.post(
   body('region').optional().trim(),
   body('lat').optional().isFloat({ min: -90, max: 90 }),
   body('lng').optional().isFloat({ min: -180, max: 180 }),
-  body('card_image').optional().custom((value) => {
+  body('card_image').optional().custom(async (value) => {
     if (value) {
-      const validation = validateBase64Image(value);
+      const validation = await validateBase64Image(value);
       if (!validation.valid) {
         throw new Error(validation.error || 'Invalid image');
       }

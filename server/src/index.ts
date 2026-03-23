@@ -21,6 +21,7 @@ import journalRouter from './routes/journal.js';
 import communityRouter from './routes/community.js';
 import profileRouter from './routes/profile.js';
 import { startTLERefreshJob } from './jobs/tleRefresh.js';
+import { startAccountDeletionJob } from './jobs/accountDeletion.js';
 import { logger } from './lib/logger.js';
 
 dotenv.config();
@@ -172,6 +173,7 @@ app.listen(PORT, () => {
   });
 
   startTLERefreshJob();
+  startAccountDeletionJob();
 });
 
 export default app;

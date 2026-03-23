@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
+import sharp from 'sharp';
 
 // Allowed image MIME types and their binary magic bytes
 const IMAGE_SIGNATURES: Record<string, number[]> = {
@@ -14,63 +15,14 @@ const MAX_IMAGE_BYTES = 500 * 1024;
 
 // Max image dimensions to prevent decompression bombs
 const MAX_IMAGE_DIMENSION = 4096;
+const MAX_IMAGE_PIXELS = MAX_IMAGE_DIMENSION * MAX_IMAGE_DIMENSION;
 
 export interface ImageValidationResult {
   valid: boolean;
   error?: string;
 }
 
-function getImageDimensions(bytes: Uint8Array, format: string): { width: number; height: number } | null {
-  try {
-    if (format === 'image/png' && bytes.length >= 24) {
-      // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian)
-      const width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
-      const height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
-      return { width, height };
-    }
-    if (format === 'image/jpeg' && bytes.length >= 2) {
-      // JPEG: scan for SOF0/SOF2 markers to find dimensions
-      let i = 2;
-      while (i < bytes.length - 9) {
-        if (bytes[i] === 0xFF) {
-          const marker = bytes[i + 1];
-          // SOF0 (0xC0) or SOF2 (0xC2) contain dimensions
-          if (marker === 0xC0 || marker === 0xC2) {
-            const height = (bytes[i + 5] << 8) | bytes[i + 6];
-            const width = (bytes[i + 7] << 8) | bytes[i + 8];
-            return { width, height };
-          }
-          // Skip to next marker
-          const length = (bytes[i + 2] << 8) | bytes[i + 3];
-          i += 2 + length;
-        } else {
-          i++;
-        }
-      }
-    }
-    if (format === 'image/gif' && bytes.length >= 10) {
-      // GIF: width at bytes 6-7, height at bytes 8-9 (little-endian)
-      const width = bytes[6] | (bytes[7] << 8);
-      const height = bytes[8] | (bytes[9] << 8);
-      return { width, height };
-    }
-    if (format === 'image/webp' && bytes.length >= 30) {
-      // WebP VP8: dimensions in VP8 chunk header
-      // This is simplified - full WebP parsing is complex
-      if (bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38) {
-        // VP8 format
-        const width = ((bytes[26] | (bytes[27] << 8)) & 0x3FFF);
-        const height = ((bytes[28] | (bytes[29] << 8)) & 0x3FFF);
-        if (width > 0 && height > 0) return { width, height };
-      }
-    }
-  } catch {
-    // Parsing failed
-  }
-  return null;
-}
-
-export function validateBase64Image(base64String: string): ImageValidationResult {
+export async function validateBase64Image(base64String: string): Promise<ImageValidationResult> {
   if (!base64String) {
     return { valid: true };
   }
@@ -137,15 +89,24 @@ export function validateBase64Image(base64String: string): ImageValidationResult
     return { valid: false, error: `MIME type mismatch: declared ${declaredMime} but detected ${detectedFormat}` };
   }
 
-  // Check image dimensions to prevent decompression bombs
-  const dimensions = getImageDimensions(bytes, detectedFormat);
-  if (!dimensions) {
+  let metadata: sharp.Metadata;
+  try {
+    metadata = await sharp(Buffer.from(bytes), {
+      limitInputPixels: MAX_IMAGE_PIXELS,
+      failOn: 'error',
+    }).metadata();
+  } catch {
+    return { valid: false, error: 'Failed to decode image data' };
+  }
+
+  if (!metadata.width || !metadata.height) {
     return { valid: false, error: 'Unable to determine image dimensions' };
   }
-  if (dimensions.width > MAX_IMAGE_DIMENSION || dimensions.height > MAX_IMAGE_DIMENSION) {
+
+  if (metadata.width > MAX_IMAGE_DIMENSION || metadata.height > MAX_IMAGE_DIMENSION) {
     return { valid: false, error: `Image dimensions exceed ${MAX_IMAGE_DIMENSION}x${MAX_IMAGE_DIMENSION} limit` };
   }
-  if (dimensions.width <= 0 || dimensions.height <= 0) {
+  if (metadata.width <= 0 || metadata.height <= 0) {
     return { valid: false, error: 'Invalid image dimensions' };
   }
 
@@ -195,7 +156,7 @@ export async function createJournalEntry(
 ): Promise<{ data: JournalEntry | null; error: string | null }> {
   // Validate card_image with MIME check and decoded size validation
   if (input.card_image) {
-    const validation = validateBase64Image(input.card_image);
+    const validation = await validateBase64Image(input.card_image);
     if (!validation.valid) {
       return { data: null, error: validation.error || 'Invalid image' };
     }
