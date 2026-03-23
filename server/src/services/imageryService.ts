@@ -77,11 +77,17 @@ function getGOESImagery(satelliteId: number, satInfo: { name: string; goesId: st
   ];
 }
 
+export class NASAAPIKeyMissingError extends Error {
+  constructor() {
+    super('NASA_API_KEY is required for this feature but not configured');
+    this.name = 'NASAAPIKeyMissingError';
+  }
+}
+
 async function getNASAEPICImagery(): Promise<ImageryItem[]> {
   const apiKey = process.env.NASA_API_KEY;
   if (!apiKey) {
-    console.warn('NASA_API_KEY not configured, skipping EPIC imagery');
-    return [];
+    throw new NASAAPIKeyMissingError();
   }
 
   try {
@@ -111,7 +117,14 @@ async function getNASAEPICImagery(): Promise<ImageryItem[]> {
       });
     }
   } catch (error) {
-    console.error('Error fetching NASA EPIC imagery:', error);
+    const errorDetails = {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      name: error instanceof Error ? error.name : 'UnknownError',
+      timestamp: new Date().toISOString(),
+      service: 'imageryService',
+      operation: 'getNASAEPICImagery',
+    };
+    console.error('Error fetching NASA EPIC imagery:', JSON.stringify(errorDetails));
   }
   return [];
 }

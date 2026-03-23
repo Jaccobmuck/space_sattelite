@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getSatelliteImagery, hasImagerySupport } from '../services/imageryService.js';
+import { getSatelliteImagery, hasImagerySupport, NASAAPIKeyMissingError } from '../services/imageryService.js';
 
 const router = Router();
 
@@ -16,6 +16,10 @@ router.get('/:noradId', async (req, res): Promise<void> => {
     const imagery = await getSatelliteImagery(noradId, satelliteName);
     res.json(imagery);
   } catch (error) {
+    if (error instanceof NASAAPIKeyMissingError) {
+      res.status(503).json({ error: 'NASA imagery service unavailable: API key not configured' });
+      return;
+    }
     console.error('Error fetching satellite imagery:', error);
     res.status(500).json({ error: 'Failed to fetch satellite imagery' });
   }

@@ -10,6 +10,7 @@ import {
   updateProfile,
 } from '../db/index.js';
 import { getProfileStats, getUserPublicSightings } from '../db/community.js';
+import { validateBase64Image } from '../db/journal.js';
 
 const router = Router();
 
@@ -78,9 +79,12 @@ router.patch(
   body('avatar').optional().custom((value) => {
     // Allow null to clear avatar
     if (value === null) return true;
-    // Max ~500KB for avatar
-    if (value && value.length > 682668) {
-      throw new Error('Avatar image exceeds 500KB limit');
+    // Validate MIME type, base64 format, and decoded size
+    if (value) {
+      const validation = validateBase64Image(value);
+      if (!validation.valid) {
+        throw new Error(validation.error || 'Invalid avatar image');
+      }
     }
     return true;
   }),

@@ -161,7 +161,7 @@ export async function getCommunityFeed(
     throw new Error(`Database error fetching community feed: ${error.message}`);
   }
 
-  if (!data) {
+  if (!data || data.length === 0) {
     return { sightings: [], total: 0, hasMore: false };
   }
 
@@ -542,36 +542,36 @@ export async function getUserPublicSightings(
     return { sightings: [], total: 0, hasMore: false };
   }
 
-  const sightings = await Promise.all(
-    data.map(async (entry) => {
-      const [likeCount, commentCount, userLiked] = await Promise.all([
-        getLikeCount(entry.id),
-        getCommentCount(entry.id),
-        currentUserId ? hasUserLiked(currentUserId, entry.id) : false,
-      ]);
+  // Batch fetch like/comment counts and user likes to avoid N+1 queries
+  const sightingIds = data.map(entry => entry.id);
+  const [likeCounts, commentCounts, userLikes] = await Promise.all([
+    getBatchLikeCounts(sightingIds),
+    getBatchCommentCounts(sightingIds),
+    currentUserId ? getBatchUserLikes(currentUserId, sightingIds) : new Set<string>(),
+  ]);
 
-      const profile = entry.profiles as {
-        id: string;
-        username: string;
-        display_name: string | null;
-        avatar: string | null;
-      };
+  const sightings = data.map((entry) => {
+    const profile = entry.profiles as {
+      id: string;
+      username: string;
+      display_name: string | null;
+      avatar: string | null;
+    };
 
-      return {
-        ...entry,
-        profiles: undefined,
-        user: {
-          id: profile.id,
-          username: profile.username,
-          display_name: profile.display_name,
-          avatar: profile.avatar,
-        },
-        like_count: likeCount,
-        comment_count: commentCount,
-        user_liked: userLiked,
-      } as CommunitySighting;
-    })
-  );
+    return {
+      ...entry,
+      profiles: undefined,
+      user: {
+        id: profile.id,
+        username: profile.username,
+        display_name: profile.display_name,
+        avatar: profile.avatar,
+      },
+      like_count: likeCounts.get(entry.id) || 0,
+      comment_count: commentCounts.get(entry.id) || 0,
+      user_liked: userLikes.has(entry.id),
+    } as CommunitySighting;
+  });
 
   return {
     sightings,

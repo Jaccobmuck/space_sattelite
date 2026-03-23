@@ -29,6 +29,11 @@ router.get('/', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, r
       return;
     }
 
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      res.status(400).json({ error: 'Invalid coordinates. lat must be -90 to 90, lng must be -180 to 180' });
+      return;
+    }
+
     const tleData = await getTLEData();
     const observer = { lat, lng, alt: 0 };
 

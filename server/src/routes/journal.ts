@@ -9,15 +9,13 @@ import {
   updateJournalEntry,
   deleteJournalEntry,
   toggleJournalEntryVisibility,
+  validateBase64Image,
 } from '../db/journal.js';
 
 const router = Router();
 
 // All journal routes require authentication
 router.use(requireAuth);
-
-// Max base64 string length for ~500KB image
-const MAX_CARD_IMAGE_LENGTH = 682668;
 
 // POST /api/journal - Create a new journal entry
 router.post(
@@ -33,8 +31,11 @@ router.post(
   body('lat').optional().isFloat({ min: -90, max: 90 }),
   body('lng').optional().isFloat({ min: -180, max: 180 }),
   body('card_image').optional().custom((value) => {
-    if (value && value.length > MAX_CARD_IMAGE_LENGTH) {
-      throw new Error('Card image exceeds 500KB limit');
+    if (value) {
+      const validation = validateBase64Image(value);
+      if (!validation.valid) {
+        throw new Error(validation.error || 'Invalid image');
+      }
     }
     return true;
   }),
@@ -59,12 +60,6 @@ router.post(
       lng,
       card_image,
     } = req.body;
-
-    // Additional server-side check for card_image size
-    if (card_image && card_image.length > MAX_CARD_IMAGE_LENGTH) {
-      res.status(413).json({ error: 'Card image exceeds 500KB limit' });
-      return;
-    }
 
     const { data, error } = await createJournalEntry({
       user_id: user.id,

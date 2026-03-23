@@ -1,5 +1,77 @@
 import { supabaseAdmin } from '../lib/supabase.js';
 
+// Allowed image MIME types and their base64 signatures
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': '/9j/',      // JPEG starts with FFD8FF
+  'image/png': 'iVBORw0K',   // PNG signature
+  'image/gif': 'R0lGOD',     // GIF signature
+  'image/webp': 'UklGR',     // WebP RIFF signature
+};
+
+// Max decoded image size: 500KB
+const MAX_IMAGE_BYTES = 500 * 1024;
+
+export interface ImageValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+export function validateBase64Image(base64String: string): ImageValidationResult {
+  if (!base64String) {
+    return { valid: true };
+  }
+
+  // Check for data URL format and extract MIME type
+  const dataUrlMatch = base64String.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+  
+  let mimeType: string | null = null;
+  let base64Data: string;
+
+  if (dataUrlMatch) {
+    mimeType = dataUrlMatch[1].toLowerCase();
+    base64Data = dataUrlMatch[2];
+  } else {
+    // Raw base64 - try to detect from signature
+    base64Data = base64String;
+  }
+
+  // Validate MIME type if provided
+  if (mimeType && !ALLOWED_IMAGE_TYPES[mimeType]) {
+    return { valid: false, error: `Invalid image type: ${mimeType}. Allowed: JPEG, PNG, GIF, WebP` };
+  }
+
+  // Validate base64 format
+  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+  if (!base64Regex.test(base64Data)) {
+    return { valid: false, error: 'Invalid base64 encoding' };
+  }
+
+  // Check decoded size (base64 is ~4/3 of original size)
+  const estimatedBytes = Math.ceil((base64Data.length * 3) / 4);
+  if (estimatedBytes > MAX_IMAGE_BYTES) {
+    return { valid: false, error: `Image exceeds ${MAX_IMAGE_BYTES / 1024}KB limit` };
+  }
+
+  // Verify signature matches a known image type
+  let signatureValid = false;
+  for (const [type, signature] of Object.entries(ALLOWED_IMAGE_TYPES)) {
+    if (base64Data.startsWith(signature)) {
+      signatureValid = true;
+      // If MIME was provided, verify it matches
+      if (mimeType && mimeType !== type) {
+        return { valid: false, error: `MIME type mismatch: declared ${mimeType} but signature indicates ${type}` };
+      }
+      break;
+    }
+  }
+
+  if (!signatureValid) {
+    return { valid: false, error: 'Unrecognized image format. Allowed: JPEG, PNG, GIF, WebP' };
+  }
+
+  return { valid: true };
+}
+
 export interface JournalEntry {
   id: string;
   user_id: string;
@@ -38,15 +110,15 @@ export interface UpdateJournalEntryInput {
   star_rating?: number;
 }
 
-// Max base64 string length for ~500KB image
-const MAX_CARD_IMAGE_LENGTH = 682668;
-
 export async function createJournalEntry(
   input: CreateJournalEntryInput
 ): Promise<{ data: JournalEntry | null; error: string | null }> {
-  // Validate card_image size
-  if (input.card_image && input.card_image.length > MAX_CARD_IMAGE_LENGTH) {
-    return { data: null, error: 'Card image exceeds 500KB limit' };
+  // Validate card_image with MIME check and decoded size validation
+  if (input.card_image) {
+    const validation = validateBase64Image(input.card_image);
+    if (!validation.valid) {
+      return { data: null, error: validation.error || 'Invalid image' };
+    }
   }
 
   const { data, error } = await supabaseAdmin
