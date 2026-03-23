@@ -1,8 +1,8 @@
 import { Router, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import Stripe from 'stripe';
 import { body, validationResult } from 'express-validator';
-import { getUserByEmail, getUserByIdFull, updateUser, deleteUser } from '../db/index.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { getProfileByEmail, updateProfile, deleteProfile } from '../db/index.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -25,7 +25,7 @@ router.get('/me', (req: AuthRequest, res: Response) => {
 // PATCH /api/account/password
 router.patch(
   '/password',
-  body('current_password').isString().notEmpty().withMessage('Current password is required'),
+  body('current_password').notEmpty().withMessage('Current password is required'),
   body('new_password').isLength({ min: 8, max: 128 }).withMessage('New password must be 8-128 characters'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
@@ -34,40 +34,27 @@ router.patch(
       return;
     }
 
-    const { current_password, new_password } = req.body as {
-      current_password: string;
-      new_password: string;
-    };
+    const { current_password, new_password } = req.body as { current_password: string; new_password: string };
 
-    if (current_password === new_password) {
-      res.status(400).json({ error: 'New password must be different from current password' });
-      return;
-    }
+    // Verify current password by attempting to sign in
+    const { error: authError } = await supabaseAdmin.auth.signInWithPassword({
+      email: req.user!.email,
+      password: current_password,
+    });
 
-    const fullUser = getUserByIdFull(req.user!.id);
-    if (!fullUser) {
-      res.status(401).json({ error: 'User not found' });
-      return;
-    }
-
-    const valid = await bcrypt.compare(current_password, fullUser.password_hash);
-    if (!valid) {
+    if (authError) {
       res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
 
-    const newHash = await bcrypt.hash(new_password, 12);
-    updateUser(fullUser.id, {
-      password_hash: newHash,
-      refresh_token_hash: null, // Invalidate all sessions
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(req.user!.id, {
+      password: new_password,
     });
 
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict' as const,
-      path: '/api/auth',
-    });
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
 
     res.json({ message: 'Password updated. Please log in again.' });
   })
@@ -76,8 +63,8 @@ router.patch(
 // PATCH /api/account/email
 router.patch(
   '/email',
+  body('current_password').notEmpty().withMessage('Current password is required'),
   body('new_email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('password').isString().notEmpty().withMessage('Password is required to confirm identity'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -85,31 +72,42 @@ router.patch(
       return;
     }
 
-    const { new_email, password } = req.body as {
-      new_email: string;
-      password: string;
-    };
+    const { current_password, new_email } = req.body as { current_password: string; new_email: string };
 
-    const fullUser = getUserByIdFull(req.user!.id);
-    if (!fullUser) {
-      res.status(401).json({ error: 'User not found' });
-      return;
-    }
+    // Verify current password
+    const { error: authError } = await supabaseAdmin.auth.signInWithPassword({
+      email: req.user!.email,
+      password: current_password,
+    });
 
-    const valid = await bcrypt.compare(password, fullUser.password_hash);
-    if (!valid) {
-      res.status(401).json({ error: 'Password is incorrect' });
+    if (authError) {
+      res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
 
     // Check if new email is already taken
-    const existing = getUserByEmail(new_email);
-    if (existing && existing.id !== fullUser.id) {
+    const existing = await getProfileByEmail(new_email);
+    if (existing && existing.id !== req.user!.id) {
       res.status(409).json({ error: 'Email already in use' });
       return;
     }
 
-    updateUser(fullUser.id, { email: new_email });
+    // Update in Supabase Auth
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(req.user!.id, {
+      email: new_email,
+    });
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    // Update in profiles table
+    const profileResult = await updateProfile(req.user!.id, { email: new_email });
+    if (!profileResult.success) {
+      res.status(500).json({ error: profileResult.error || 'Failed to update profile' });
+      return;
+    }
 
     res.json({ message: 'Email updated.', email: new_email });
   })
@@ -118,7 +116,7 @@ router.patch(
 // DELETE /api/account
 router.delete(
   '/',
-  body('password').isString().notEmpty().withMessage('Password is required to delete account'),
+  body('current_password').notEmpty().withMessage('Current password is required'),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -126,28 +124,28 @@ router.delete(
       return;
     }
 
-    const { password } = req.body as { password: string };
+    const user = req.user!;
+    const { current_password } = req.body as { current_password: string };
 
-    const fullUser = getUserByIdFull(req.user!.id);
-    if (!fullUser) {
-      res.status(401).json({ error: 'User not found' });
+    // Verify current password before deletion
+    const { error: authError } = await supabaseAdmin.auth.signInWithPassword({
+      email: user.email,
+      password: current_password,
+    });
+
+    if (authError) {
+      res.status(401).json({ error: 'Current password is incorrect' });
       return;
     }
 
-    const valid = await bcrypt.compare(password, fullUser.password_hash);
-    if (!valid) {
-      res.status(401).json({ error: 'Password is incorrect' });
-      return;
-    }
-
-    // Cancel Stripe subscriptions if customer exists
-    if (fullUser.stripe_customer_id && process.env.STRIPE_SECRET_KEY) {
+    // Cancel Stripe subscriptions if customer exists - fail deletion if this fails
+    if (user.stripe_customer_id && process.env.STRIPE_SECRET_KEY) {
       try {
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
           apiVersion: '2025-02-24.acacia' as Stripe.LatestApiVersion,
         });
         const subscriptions = await stripe.subscriptions.list({
-          customer: fullUser.stripe_customer_id,
+          customer: user.stripe_customer_id,
           status: 'active',
         });
         for (const sub of subscriptions.data) {
@@ -155,17 +153,15 @@ router.delete(
         }
       } catch (err) {
         console.error('Failed to cancel Stripe subscriptions during account deletion:', err);
+        res.status(500).json({ 
+          error: 'Failed to cancel subscription. Please try again or contact support.',
+        });
+        return;
       }
     }
 
-    deleteUser(fullUser.id);
-
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict' as const,
-      path: '/api/auth',
-    });
+    // Delete user from Supabase Auth (cascades to profiles)
+    await deleteProfile(user.id);
 
     res.json({ message: 'Account deleted.' });
   })

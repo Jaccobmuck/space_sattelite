@@ -32,7 +32,7 @@ router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Respons
       .filter(Boolean);
 
     const isProUser = req.user?.plan === 'pro';
-    const result = isProUser ? satellites : satellites.slice(0, 10);
+    const result = isProUser ? satellites : satellites.slice(0, 30);
 
     res.json({
       count: result.length,

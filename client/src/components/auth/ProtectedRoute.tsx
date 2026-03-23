@@ -8,9 +8,14 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children, requirePro = false }: ProtectedRouteProps) {
   const user = useAuthStore((s) => s.user);
-  const accessToken = useAuthStore((s) => s.accessToken);
+  const initialized = useAuthStore((s) => s.initialized);
 
-  if (!accessToken || !user) {
+  // Wait for auth to initialize before redirecting
+  if (!initialized) {
+    return null;
+  }
+
+  if (!user) {
     return <Navigate to="/" replace />;
   }
 

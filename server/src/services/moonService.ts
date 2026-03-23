@@ -6,8 +6,6 @@ export interface MoonData {
   illumination: number;
   nextFullMoon: string;
   nextNewMoon: string;
-  moonrise: string | null;
-  moonset: string | null;
   age: number;
 }
 
@@ -53,11 +51,7 @@ function getNextMoonEvent(date: Date, targetPhase: number): Date {
   return new Date(date.getTime() + daysUntil * 24 * 60 * 60 * 1000);
 }
 
-export function calculateMoonData(
-  date: Date = new Date(),
-  _lat?: number,
-  _lng?: number
-): MoonData {
+export function calculateMoonData(date: Date = new Date()): MoonData {
   const age = getMoonAge(date);
   const phase = getMoonPhase(age);
   const phaseName = getPhaseName(phase);
@@ -72,8 +66,6 @@ export function calculateMoonData(
     illumination,
     nextFullMoon: nextFullMoon.toISOString(),
     nextNewMoon: nextNewMoon.toISOString(),
-    moonrise: null,
-    moonset: null,
     age: Math.round(age * 10) / 10,
   };
 }

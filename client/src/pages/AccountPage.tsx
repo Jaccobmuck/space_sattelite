@@ -116,7 +116,8 @@ export default function AccountPage() {
     if (searchParams.get('upgrade') === 'success') {
       setUpgradeStatus('success');
       setSearchParams({}, { replace: true });
-      useAuthStore.getState().refreshToken();
+      // Use refreshUser() to force fetch fresh user data regardless of initialized state
+      useAuthStore.getState().refreshUser();
     } else if (searchParams.get('upgrade') === 'cancelled') {
       setUpgradeStatus('cancelled');
       setSearchParams({}, { replace: true });
@@ -189,7 +190,7 @@ export default function AccountPage() {
     try {
       const { data } = await api.patch('/api/account/email', {
         new_email: newEmail,
-        password: emailPassword,
+        current_password: emailPassword,
       });
       updateUserEmail(data.email);
       setNewEmail('');
@@ -211,7 +212,7 @@ export default function AccountPage() {
     }
     setDeleteLoading(true);
     try {
-      await api.delete('/api/account', { data: { password: deletePassword } });
+      await api.delete('/api/account', { data: { current_password: deletePassword } });
       await logout();
       navigate('/');
     } catch (err) {

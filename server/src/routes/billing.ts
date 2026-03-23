@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { updateUserPlan, updateUserStripeCustomerId, getUserByStripeCustomerId } from '../db/index.js';
+import { updateUserPlan, updateUserStripeCustomerId, getProfileByStripeCustomerId } from '../db/index.js';
 
 const router = Router();
 
@@ -91,13 +91,21 @@ router.post(
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.metadata?.userId ? parseInt(session.metadata.userId, 10) : null;
+        const userId = session.metadata?.userId || null;
         const customerId = session.customer as string;
 
         if (userId) {
-          updateUserPlan(userId, 'pro');
+          const planResult = await updateUserPlan(userId, 'pro');
+          if (!planResult.success) {
+            console.error(`Failed to upgrade user ${userId} to Pro:`, planResult.error);
+            res.status(500).json({ error: 'Failed to update user plan' });
+            return;
+          }
           if (customerId) {
-            updateUserStripeCustomerId(userId, customerId);
+            const customerResult = await updateUserStripeCustomerId(userId, customerId);
+            if (!customerResult.success) {
+              console.error(`Failed to set Stripe customer ID for user ${userId}:`, customerResult.error);
+            }
           }
           console.log(`User ${userId} upgraded to Pro`);
         }
@@ -107,9 +115,14 @@ router.post(
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
-        const user = getUserByStripeCustomerId(customerId);
+        const user = await getProfileByStripeCustomerId(customerId);
         if (user) {
-          updateUserPlan(user.id, 'free');
+          const result = await updateUserPlan(user.id, 'free');
+          if (!result.success) {
+            console.error(`Failed to downgrade user ${user.id}:`, result.error);
+            res.status(500).json({ error: 'Failed to update user plan' });
+            return;
+          }
           console.log(`User ${user.id} downgraded to free (subscription deleted)`);
         }
         break;
@@ -118,7 +131,7 @@ router.post(
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
-        const user = getUserByStripeCustomerId(customerId);
+        const user = await getProfileByStripeCustomerId(customerId);
         if (user) {
           console.warn(`Payment failed for user ${user.id} (customer: ${customerId})`);
         }

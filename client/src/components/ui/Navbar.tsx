@@ -100,6 +100,16 @@ function Navbar() {
 
         <div className="flex items-center gap-6">
           <motion.button
+            onClick={() => navigate('/community')}
+            className="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-text-secondary hover:text-accent-purple hover:bg-accent-purple/10 border border-transparent transition-colors"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <span>👥</span>
+            <span className="font-orbitron text-xs tracking-wide">COMMUNITY</span>
+          </motion.button>
+
+          <motion.button
             onClick={requestLocation}
             disabled={locationStatus === 'loading'}
             className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-all ${

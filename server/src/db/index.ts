@@ -1,128 +1,153 @@
-import Database, { type Database as DatabaseType } from 'better-sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { supabaseAdmin } from '../lib/supabase.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const DB_PATH = process.env.DATABASE_URL || path.join(__dirname, '..', '..', 'sentry.db');
-
-const db: DatabaseType = new Database(DB_PATH);
-
-// Enable WAL mode for better concurrency
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    plan TEXT NOT NULL DEFAULT 'free' CHECK(plan IN ('free', 'pro')),
-    stripe_customer_id TEXT,
-    failed_login_attempts INTEGER NOT NULL DEFAULT 0,
-    locked_until TEXT,
-    refresh_token_hash TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-// Migrate existing tables that may lack new columns
-const tableInfo = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
-const columnNames = new Set(tableInfo.map((c) => c.name));
-
-if (!columnNames.has('failed_login_attempts')) {
-  db.exec("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0");
-}
-if (!columnNames.has('locked_until')) {
-  db.exec("ALTER TABLE users ADD COLUMN locked_until TEXT");
-}
-if (!columnNames.has('refresh_token_hash')) {
-  db.exec("ALTER TABLE users ADD COLUMN refresh_token_hash TEXT");
-}
-
-export interface UserRow {
-  id: number;
+export interface Profile {
+  id: string;
   email: string;
-  password_hash: string;
   plan: 'free' | 'pro';
   stripe_customer_id: string | null;
-  failed_login_attempts: number;
-  locked_until: string | null;
-  refresh_token_hash: string | null;
+  username: string | null;
+  display_name: string | null;
+  avatar: string | null;
+  bio: string | null;
+  location_city: string | null;
+  location_region: string | null;
+  lat: number | null;
+  lng: number | null;
   created_at: string;
 }
 
-export type SafeUser = Omit<UserRow, 'password_hash' | 'refresh_token_hash'>;
+export type SafeUser = Omit<Profile, 'avatar'>;
 
-function stripSensitiveFields(user: UserRow): SafeUser {
-  const { password_hash: _pw, refresh_token_hash: _rt, ...safe } = user;
-  return safe;
+export interface PublicProfile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar: string | null;
+  bio: string | null;
+  location_city: string | null;
+  location_region: string | null;
+  created_at: string;
 }
 
-// Safe dynamic UPDATE — only whitelisted columns allowed
-const ALLOWED_UPDATE_FIELDS = [
-  'email',
-  'password_hash',
-  'plan',
-  'stripe_customer_id',
-  'failed_login_attempts',
-  'locked_until',
-  'refresh_token_hash',
-] as const;
+export async function getProfileById(id: string): Promise<Profile | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', id)
+    .single();
 
-type UpdatableField = (typeof ALLOWED_UPDATE_FIELDS)[number];
-type UpdatableFields = Partial<Pick<UserRow, UpdatableField>>;
-
-export function updateUser(userId: number, fields: UpdatableFields): void {
-  const safeKeys = ALLOWED_UPDATE_FIELDS.filter((f) => f in fields);
-  if (safeKeys.length === 0) return;
-  const setClauses = safeKeys.map((f) => `${f} = ?`).join(', ');
-  const values = safeKeys.map((f) => fields[f] ?? null);
-  db.prepare(`UPDATE users SET ${setClauses} WHERE id = ?`).run(...values, userId);
+  if (error || !data) return null;
+  return data as Profile;
 }
 
-export function createUser(email: string, passwordHash: string): SafeUser {
-  const stmt = db.prepare(
-    'INSERT INTO users (email, password_hash) VALUES (?, ?)'
-  );
-  const result = stmt.run(email, passwordHash);
-  return getUserById(result.lastInsertRowid as number)!;
+export async function getProfileByEmail(email: string): Promise<Profile | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', email)
+    .single();
+
+  if (error || !data) return null;
+  return data as Profile;
 }
 
-export function getUserByEmail(email: string): UserRow | undefined {
-  const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
-  return stmt.get(email) as UserRow | undefined;
+export type ProfileUpdateFields = Partial<Pick<Profile, 
+  'email' | 'plan' | 'stripe_customer_id' | 'username' | 'display_name' | 
+  'avatar' | 'bio' | 'location_city' | 'location_region' | 'lat' | 'lng'
+>>;
+
+export async function updateProfile(
+  userId: string,
+  fields: ProfileUpdateFields
+): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .update(fields)
+    .eq('id', userId);
+
+  if (error) {
+    console.error('Failed to update profile:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
 }
 
-export function getUserById(id: number): SafeUser | undefined {
-  const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
-  const row = stmt.get(id) as UserRow | undefined;
-  return row ? stripSensitiveFields(row) : undefined;
+export async function updateUserPlan(userId: string, plan: 'free' | 'pro'): Promise<{ success: boolean; error?: string }> {
+  return updateProfile(userId, { plan });
 }
 
-export function getUserByIdFull(id: number): UserRow | undefined {
-  const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
-  return stmt.get(id) as UserRow | undefined;
+export async function updateUserStripeCustomerId(userId: string, stripeCustomerId: string): Promise<{ success: boolean; error?: string }> {
+  return updateProfile(userId, { stripe_customer_id: stripeCustomerId });
 }
 
-export function updateUserPlan(userId: number, plan: 'free' | 'pro'): void {
-  updateUser(userId, { plan });
+export async function getProfileByStripeCustomerId(stripeCustomerId: string): Promise<Profile | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('stripe_customer_id', stripeCustomerId)
+    .single();
+
+  if (error || !data) return null;
+  return data as Profile;
 }
 
-export function updateUserStripeCustomerId(userId: number, stripeCustomerId: string): void {
-  updateUser(userId, { stripe_customer_id: stripeCustomerId });
+export async function deleteProfile(userId: string): Promise<void> {
+  // Delete from Supabase Auth (this will cascade to profiles table)
+  await supabaseAdmin.auth.admin.deleteUser(userId);
 }
 
-export function getUserByStripeCustomerId(stripeCustomerId: string): SafeUser | undefined {
-  const stmt = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?');
-  const row = stmt.get(stripeCustomerId) as UserRow | undefined;
-  return row ? stripSensitiveFields(row) : undefined;
+// ============================================
+// Profile functions for community feature
+// ============================================
+
+export async function getProfileByUsername(username: string): Promise<Profile | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('username', username)
+    .single();
+
+  if (error || !data) return null;
+  return data as Profile;
 }
 
-export function deleteUser(userId: number): void {
-  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+export async function isUsernameTaken(username: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('username', username)
+    .single();
+
+  return !!data;
 }
 
-export default db;
+export async function setUsername(userId: string, username: string): Promise<{ success: boolean; error?: string }> {
+  // Check if user already has a username (one-time only)
+  const profile = await getProfileById(userId);
+  if (profile?.username) {
+    return { success: false, error: 'Username already set' };
+  }
+
+  // Check if username is taken
+  const taken = await isUsernameTaken(username);
+  if (taken) {
+    return { success: false, error: 'Username already taken' };
+  }
+
+  const result = await updateProfile(userId, { username });
+  if (!result.success) {
+    return { success: false, error: result.error || 'Failed to set username' };
+  }
+  return { success: true };
+}
+
+export async function getPublicProfile(username: string): Promise<PublicProfile | null> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, username, display_name, avatar, bio, location_city, location_region, created_at')
+    .eq('username', username)
+    .single();
+
+  if (error || !data) return null;
+  return data as PublicProfile;
+}

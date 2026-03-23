@@ -37,7 +37,33 @@ function latLngToVector3(lat: number, lng: number, alt: number) {
 function SatelliteMarkers() {
   const meshRef = useRef<InstancedMesh>(null);
   const lastPanelUpdateRef = useRef<number>(0);
-  const { satellites, selectSatellite, selectedSatellite, searchHighlightId, satrecMap, simulatedTime, updateSelectedSatellitePosition } = useAppStore();
+  const { satellites, selectSatellite, selectedSatellite, searchHighlightId, satrecMap, simulatedTime, updateSelectedSatellitePosition, constellationFilter } = useAppStore();
+
+  // Filter satellites based on constellation filter
+  const filteredSatellites = useMemo(() => {
+    if (constellationFilter === 'all') return satellites;
+    
+    return satellites.filter((sat) => {
+      switch (constellationFilter) {
+        case 'stations':
+          return sat.category === 'iss' || 
+                 sat.name.toLowerCase().includes('tiangong') ||
+                 sat.name.toLowerCase().includes('css');
+        case 'starlink':
+          return sat.name.toLowerCase().includes('starlink');
+        case 'gps':
+          return sat.category === 'nav';
+        case 'weather':
+          return sat.category === 'weather';
+        case 'amateur':
+          return sat.category === 'science';
+        case 'debris':
+          return sat.category === 'debris';
+        default:
+          return true;
+      }
+    });
+  }, [satellites, constellationFilter]);
   const dummy = useMemo(() => new Object3D(), []);
 
   const geometry = useMemo(() => new SphereGeometry(0.008, 8, 8), []);
@@ -47,9 +73,9 @@ function SatelliteMarkers() {
   );
 
   useEffect(() => {
-    if (!meshRef.current || satellites.length === 0) return;
+    if (!meshRef.current || filteredSatellites.length === 0) return;
 
-    satellites.forEach((sat, i) => {
+    filteredSatellites.forEach((sat, i) => {
       const pos = latLngToVector3(sat.lat, sat.lng, sat.alt);
       dummy.position.set(pos.x, pos.y, pos.z);
 
@@ -68,16 +94,16 @@ function SatelliteMarkers() {
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true;
     }
-  }, [satellites, dummy]);
+  }, [filteredSatellites, dummy]);
 
   useFrame((state) => {
-    if (!meshRef.current || satellites.length === 0) return;
+    if (!meshRef.current || filteredSatellites.length === 0) return;
 
     const time = state.clock.getElapsedTime();
     const now = Date.now();
     const shouldUpdatePanel = now - lastPanelUpdateRef.current > 1000;
 
-    satellites.forEach((sat, i) => {
+    filteredSatellites.forEach((sat, i) => {
       let lat = sat.lat;
       let lng = sat.lng;
       let alt = sat.alt;
@@ -150,19 +176,19 @@ function SatelliteMarkers() {
   });
 
   const handleClick = (event: { instanceId?: number }) => {
-    if (event.instanceId !== undefined && satellites[event.instanceId]) {
-      selectSatellite(satellites[event.instanceId]);
+    if (event.instanceId !== undefined && filteredSatellites[event.instanceId]) {
+      selectSatellite(filteredSatellites[event.instanceId]);
     }
   };
 
-  if (satellites.length === 0) {
+  if (filteredSatellites.length === 0) {
     return null;
   }
 
   return (
     <instancedMesh
       ref={meshRef}
-      args={[geometry, material, satellites.length]}
+      args={[geometry, material, filteredSatellites.length]}
       onClick={handleClick}
     />
   );

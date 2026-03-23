@@ -11,6 +11,8 @@ build/
 .env
 .env.local
 .env.*.local
+server/.env
+client/.env
 
 # IDE
 .vscode/

@@ -564,8 +564,10 @@ export function getTLECacheAge(): number | null {
   return Date.now() - tleCache.lastUpdated.getTime();
 }
 
+const TLE_CACHE_DURATION_MS = parseInt(process.env.TLE_CACHE_DURATION_MS || '7200000', 10); // Default 2 hours
+
 export async function getTLEData(): Promise<TLEData[]> {
-  if (tleCache && getTLECacheAge()! < 2 * 60 * 60 * 1000) {
+  if (tleCache && getTLECacheAge()! < TLE_CACHE_DURATION_MS) {
     return tleCache.data;
   }
   return fetchTLEData();

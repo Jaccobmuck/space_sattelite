@@ -5,28 +5,21 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor: attach access token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Cookies are sent automatically with withCredentials: true
 
 // Response interceptor: handle 401 with token refresh
 let isRefreshing = false;
 let failedQueue: Array<{
-  resolve: (token: string) => void;
+  resolve: () => void;
   reject: (err: unknown) => void;
 }> = [];
 
-function processQueue(error: unknown, token: string | null) {
+function processQueue(error: unknown) {
   failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
     } else {
-      prom.resolve(token!);
+      prom.resolve();
     }
   });
   failedQueue = [];
@@ -37,12 +30,16 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Skip refresh for auth endpoints to avoid loops
+    if (originalRequest.url?.includes('/api/auth/')) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
+        }).then(() => {
           return api(originalRequest);
         });
       }
@@ -51,20 +48,13 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL || ''}/api/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
-
-        const newToken = data.accessToken;
-        localStorage.setItem('accessToken', newToken);
-        processQueue(null, newToken);
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        // Server reads refresh token from HttpOnly cookie
+        await api.post('/api/auth/refresh');
+        
+        processQueue(null);
         return api(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        localStorage.removeItem('accessToken');
+        processQueue(refreshError);
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {

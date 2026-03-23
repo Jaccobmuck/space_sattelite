@@ -17,6 +17,9 @@ import imageryRouter from './routes/imagery.js';
 import authRouter from './routes/auth.js';
 import billingRouter from './routes/billing.js';
 import accountRouter from './routes/account.js';
+import journalRouter from './routes/journal.js';
+import communityRouter from './routes/community.js';
+import profileRouter from './routes/profile.js';
 import { startTLERefreshJob } from './jobs/tleRefresh.js';
 
 dotenv.config();
@@ -27,13 +30,19 @@ const __dirname = path.dirname(__filename);
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const PORT = process.env.PORT || 3001;
 
-// Startup checks
+// Startup checks - validate required environment variables
+const REQUIRED_ENV_VARS = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_PRO_PRICE_ID',
+];
+
 if (NODE_ENV === 'production') {
-  if (!process.env.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET.length < 64) {
-    throw new Error('JWT_ACCESS_SECRET must be at least 64 characters in production');
-  }
-  if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.length < 64) {
-    throw new Error('JWT_REFRESH_SECRET must be at least 64 characters in production');
+  const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 }
 
@@ -44,7 +53,19 @@ app.use(morgan(NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // Security
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "https://api.nasa.gov", "https://services.swpc.noaa.gov", "https://celestrak.org"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -119,6 +140,9 @@ app.use('/api/passes', passesRouter);
 app.use('/api/moon', moonRouter);
 app.use('/api/weather', weatherRouter);
 app.use('/api/imagery', imageryRouter);
+app.use('/api/journal', journalRouter);
+app.use('/api/community', communityRouter);
+app.use('/api/profile', profileRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -152,7 +176,7 @@ app.listen(PORT, () => {
   console.log(`🛰️  SENTRY Server running on port ${PORT}`);
   console.log(`   Environment: ${NODE_ENV}`);
   console.log(`   Health check: http://localhost:${PORT}/api/health`);
-  console.log(`   Database: SQLite connected`);
+  console.log(`   Database: Supabase connected`);
   console.log(`   Stripe configured: ${!!process.env.STRIPE_SECRET_KEY}`);
   
   // Start background jobs

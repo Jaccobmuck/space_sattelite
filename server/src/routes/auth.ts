@@ -1,49 +1,23 @@
-import { Router, Response } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { Router, Response, CookieOptions } from 'express';
 import { body, validationResult } from 'express-validator';
-import { createUser, getUserByEmail, getUserById, getUserByIdFull, updateUser } from '../db/index.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { getProfileById } from '../db/index.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
-function generateAccessToken(userId: number): string {
-  return jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET!, { expiresIn: '15m' });
-}
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-function generateRefreshToken(userId: number): string {
-  return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET!, { expiresIn: '7d' });
-}
-
-async function issueTokensAndSetCookie(
-  userId: number,
-  res: Response
-): Promise<{ accessToken: string }> {
-  const accessToken = generateAccessToken(userId);
-  const refreshToken = generateRefreshToken(userId);
-
-  // Store hashed refresh token in DB for invalidation support
-  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
-  updateUser(userId, { refresh_token_hash: refreshTokenHash });
-
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/api/auth',
-  });
-
-  return { accessToken };
-}
-
-const REFRESH_COOKIE_OPTIONS = {
+const cookieOptions: CookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  path: '/api/auth',
+  secure: NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/',
 };
+
+const ACCESS_TOKEN_MAX_AGE = 60 * 60 * 1000; // 1 hour
+const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const emailValidation = body('email').isEmail().normalizeEmail().withMessage('Valid email is required');
 const passwordValidation = body('password').isLength({ min: 8, max: 128 }).withMessage('Password must be 8-128 characters');
@@ -61,18 +35,27 @@ router.post(
 
     const { email, password } = req.body as { email: string; password: string };
 
-    const existing = getUserByEmail(email);
-    if (existing) {
-      res.status(409).json({ error: 'Email already registered' });
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+    });
+
+    if (error) {
+      if (error.message.includes('already been registered')) {
+        res.status(409).json({ error: 'Email already registered' });
+        return;
+      }
+      res.status(400).json({ error: error.message });
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-    const user = createUser(email, passwordHash);
+    // Get the profile (created by trigger)
+    const profile = await getProfileById(data.user.id);
 
-    const { accessToken } = await issueTokensAndSetCookie(user.id, res);
-
-    res.status(201).json({ user, accessToken });
+    res.status(201).json({ 
+      user: profile,
+      message: 'Registration successful. Please sign in.',
+    });
   })
 );
 
@@ -89,93 +72,74 @@ router.post(
 
     const { email, password } = req.body as { email: string; password: string };
 
-    const user = getUserByEmail(email);
-    if (!user) {
-      res.status(401).json({ error: 'Invalid email or password' });
-      return;
-    }
-
-    // Check account lockout
-    if (user.locked_until && new Date() < new Date(user.locked_until)) {
-      res.status(423).json({ error: 'Account temporarily locked. Try again later.' });
-      return;
-    }
-
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      const newAttempts = user.failed_login_attempts + 1;
-      const lockUntil = newAttempts >= 5
-        ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
-        : null;
-      updateUser(user.id, {
-        failed_login_attempts: newAttempts,
-        locked_until: lockUntil,
-      });
-      res.status(401).json({ error: 'Invalid email or password' });
-      return;
-    }
-
-    // Reset failed attempts on successful login
-    updateUser(user.id, {
-      failed_login_attempts: 0,
-      locked_until: null,
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+      email,
+      password,
     });
 
-    const { accessToken } = await issueTokensAndSetCookie(user.id, res);
+    if (error) {
+      res.status(401).json({ error: 'Invalid email or password' });
+      return;
+    }
 
-    const { password_hash: _pw, refresh_token_hash: _rt, ...safeUser } = user;
-    res.json({ user: safeUser, accessToken });
+    const profile = await getProfileById(data.user.id);
+
+    res.cookie('accessToken', data.session.access_token, {
+      ...cookieOptions,
+      maxAge: ACCESS_TOKEN_MAX_AGE,
+    });
+    res.cookie('refreshToken', data.session.refresh_token, {
+      ...cookieOptions,
+      maxAge: REFRESH_TOKEN_MAX_AGE,
+    });
+
+    res.json({ user: profile });
   })
 );
 
 router.post('/refresh', asyncHandler(async (req: AuthRequest, res: Response) => {
-  const token = req.cookies?.refreshToken;
-  if (!token) {
+  const refreshToken = req.cookies?.refreshToken;
+  
+  if (!refreshToken) {
     res.status(401).json({ error: 'Refresh token required' });
     return;
   }
 
-  try {
-    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { userId: number };
-    const fullUser = getUserByIdFull(payload.userId);
-    if (!fullUser) {
-      res.status(401).json({ error: 'User not found' });
-      return;
-    }
+  const { data, error } = await supabaseAdmin.auth.refreshSession({
+    refresh_token: refreshToken,
+  });
 
-    // Verify refresh token matches stored hash (invalidation support)
-    if (!fullUser.refresh_token_hash) {
-      res.status(401).json({ error: 'Session invalidated. Please log in again.' });
-      return;
-    }
-
-    const tokenValid = await bcrypt.compare(token, fullUser.refresh_token_hash);
-    if (!tokenValid) {
-      res.status(401).json({ error: 'Session invalidated. Please log in again.' });
-      return;
-    }
-
-    const user = getUserById(payload.userId);
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
-      return;
-    }
-
-    const accessToken = generateAccessToken(user.id);
-    res.json({ user, accessToken });
-  } catch {
+  if (error || !data.session) {
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
     res.status(401).json({ error: 'Invalid or expired refresh token' });
+    return;
   }
+
+  const profile = await getProfileById(data.user!.id);
+
+  res.cookie('accessToken', data.session.access_token, {
+    ...cookieOptions,
+    maxAge: ACCESS_TOKEN_MAX_AGE,
+  });
+  res.cookie('refreshToken', data.session.refresh_token, {
+    ...cookieOptions,
+    maxAge: REFRESH_TOKEN_MAX_AGE,
+  });
+
+  res.json({ user: profile });
 }));
 
-router.post('/logout', requireAuth, (req: AuthRequest, res: Response) => {
-  // Invalidate refresh token in DB
+router.post('/logout', requireAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Supabase handles session invalidation on client side
+  // Server-side we can optionally sign out all sessions
   if (req.user) {
-    updateUser(req.user.id, { refresh_token_hash: null });
+    await supabaseAdmin.auth.admin.signOut(req.user.id);
   }
-  res.clearCookie('refreshToken', REFRESH_COOKIE_OPTIONS);
+  res.clearCookie('accessToken', cookieOptions);
+  res.clearCookie('refreshToken', cookieOptions);
   res.json({ message: 'Logged out' });
-});
+}));
 
 router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   res.json({ user: req.user });

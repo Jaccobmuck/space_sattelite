@@ -1,46 +1,52 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { getUserById, type SafeUser } from '../db/index.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { getProfileById, type SafeUser } from '../db/index.js';
 
 export interface AuthRequest extends Request {
   user?: SafeUser;
 }
 
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  const token = req.cookies?.accessToken;
+  if (!token) {
     res.status(401).json({ error: 'Access token required' });
     return;
   }
-
-  const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { userId: number };
-    const user = getUserById(payload.userId);
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
+    const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
+    
+    if (error || !authUser) {
+      res.status(401).json({ error: 'Invalid or expired access token' });
       return;
     }
-    req.user = user;
+
+    const profile = await getProfileById(authUser.id);
+    if (!profile) {
+      res.status(401).json({ error: 'User profile not found' });
+      return;
+    }
+
+    req.user = profile;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired access token' });
   }
 }
 
-export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+export async function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
+  const token = req.cookies?.accessToken;
+  if (!token) {
     next();
     return;
   }
-
-  const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { userId: number };
-    const user = getUserById(payload.userId);
-    if (user) {
-      req.user = user;
+    const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
+    
+    if (!error && authUser) {
+      const profile = await getProfileById(authUser.id);
+      if (profile) {
+        req.user = profile;
+      }
     }
   } catch {
     // Token invalid — continue as unauthenticated

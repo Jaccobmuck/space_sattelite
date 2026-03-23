@@ -2,48 +2,98 @@ import { create } from 'zustand';
 import api from '../lib/api';
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   plan: 'free' | 'pro';
   stripe_customer_id: string | null;
+  username: string | null;
+  display_name: string | null;
+  bio: string | null;
+  location_city: string | null;
+  location_region: string | null;
+  lat: number | null;
+  lng: number | null;
   created_at: string;
 }
 
 interface AuthState {
   user: User | null;
-  accessToken: string | null;
   isLoading: boolean;
+  initialized: boolean;
 
+  initialize: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshToken: () => Promise<void>;
-  setAuth: (user: User, accessToken: string) => void;
+  setUser: (user: User) => void;
   clearAuth: () => void;
   updateUserEmail: (email: string) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  accessToken: localStorage.getItem('accessToken'),
   isLoading: false,
+  initialized: false,
 
-  setAuth: (user, accessToken) => {
-    localStorage.setItem('accessToken', accessToken);
-    set({ user, accessToken });
+  initialize: async () => {
+    if (get().initialized) return;
+    
+    try {
+      // Server will read token from HttpOnly cookie
+      const { data } = await api.get('/api/auth/me');
+      set({ 
+        user: data.user, 
+        initialized: true,
+      });
+    } catch {
+      // Token invalid or missing, try refresh
+      try {
+        const { data } = await api.post('/api/auth/refresh');
+        set({ 
+          user: data.user, 
+          initialized: true,
+        });
+      } catch {
+        set({ user: null, initialized: true });
+      }
+    }
+  },
+
+  refreshUser: async () => {
+    // Force fetch user data regardless of initialized state
+    try {
+      const { data } = await api.get('/api/auth/me');
+      set({ user: data.user, initialized: true });
+    } catch {
+      // If /me fails, try refresh
+      try {
+        const { data } = await api.post('/api/auth/refresh');
+        set({ user: data.user, initialized: true });
+      } catch {
+        set({ user: null, initialized: true });
+      }
+    }
+  },
+
+  setUser: (user) => {
+    set({ user });
   },
 
   clearAuth: () => {
-    localStorage.removeItem('accessToken');
-    set({ user: null, accessToken: null });
+    set({ user: null });
   },
 
   login: async (email, password) => {
     set({ isLoading: true });
     try {
       const { data } = await api.post('/api/auth/login', { email, password });
-      localStorage.setItem('accessToken', data.accessToken);
-      set({ user: data.user, accessToken: data.accessToken, isLoading: false });
+      // Server sets HttpOnly cookies automatically
+      set({ 
+        user: data.user, 
+        isLoading: false,
+        initialized: true,
+      });
     } catch (error) {
       set({ isLoading: false });
       throw error;
@@ -53,9 +103,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (email, password) => {
     set({ isLoading: true });
     try {
-      const { data } = await api.post('/api/auth/register', { email, password });
-      localStorage.setItem('accessToken', data.accessToken);
-      set({ user: data.user, accessToken: data.accessToken, isLoading: false });
+      await api.post('/api/auth/register', { email, password });
+      
+      // Registration successful, now login
+      set({ isLoading: false });
+      
+      // Auto-login after registration
+      await get().login(email, password);
     } catch (error) {
       set({ isLoading: false });
       throw error;
@@ -68,19 +122,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Ignore errors on logout
     }
-    localStorage.removeItem('accessToken');
-    set({ user: null, accessToken: null });
-  },
-
-  refreshToken: async () => {
-    try {
-      const { data } = await api.post('/api/auth/refresh');
-      localStorage.setItem('accessToken', data.accessToken);
-      set({ user: data.user, accessToken: data.accessToken });
-    } catch {
-      localStorage.removeItem('accessToken');
-      set({ user: null, accessToken: null });
-    }
+    // Server clears HttpOnly cookies
+    set({ user: null });
   },
 
   updateUserEmail: (email) => {
