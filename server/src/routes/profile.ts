@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { body, param, validationResult } from 'express-validator';
+import { body, param, query, validationResult } from 'express-validator';
 import { optionalAuth, requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
@@ -171,6 +171,8 @@ router.get(
   '/:username/sightings',
   optionalAuth,
   param('username').trim().notEmpty().withMessage('Username is required'),
+  query('page').optional().isInt({ min: 1 }).toInt(),
+  query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -184,8 +186,8 @@ router.get(
       return;
     }
 
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const page = (req.query.page as number | undefined) || 1;
+    const limit = (req.query.limit as number | undefined) || 20;
 
     const { sightings, total, hasMore } = await getUserPublicSightings(
       profile.id,

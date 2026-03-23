@@ -6,8 +6,21 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
+// Free tier limits
+const FREE_TIER_SATELLITE_LIMIT = 30;
+
+// Strip TLE/orbit data from free-tier responses to enforce paid feature
+function stripProData<T extends { tle1?: string; tle2?: string }>(satellites: T[], isProUser: boolean): T[] {
+  if (isProUser) return satellites;
+  return satellites.map(sat => {
+    const { tle1, tle2, ...rest } = sat as T & { tle1?: string; tle2?: string };
+    return rest as T;
+  });
+}
+
 router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
     const tleData = await getTLEData();
+    const isProUser = req.user?.plan === 'pro';
 
     const satellites = tleData
       .map((sat) => {
@@ -29,10 +42,24 @@ router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Respons
           tle2: sat.tle2,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as Array<{
+        noradId: number;
+        name: string;
+        category: string;
+        lat: number;
+        lng: number;
+        alt: number;
+        velocity: number;
+        period: number;
+        inclination: number;
+        owner: string;
+        tle1: string;
+        tle2: string;
+      }>;
 
-    const isProUser = req.user?.plan === 'pro';
-    const result = isProUser ? satellites : satellites.slice(0, 30);
+    // Apply count limit and strip TLE data for free users
+    const limited = isProUser ? satellites : satellites.slice(0, FREE_TIER_SATELLITE_LIMIT);
+    const result = stripProData(limited, isProUser);
 
     res.json({
       count: result.length,
@@ -43,12 +70,10 @@ router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Respons
     });
 }));
 
-// Free tier limit for category endpoint (same as root endpoint)
-const FREE_TIER_SATELLITE_LIMIT = 30;
-
 router.get('/category/:group', optionalAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
     const group = req.params.group.toLowerCase();
     const tleData = await getTLEData();
+    const isProUser = req.user?.plan === 'pro';
 
     // Map group names to categories
     const groupToCategoryMap: Record<string, string[]> = {
@@ -98,11 +123,24 @@ router.get('/category/:group', optionalAuth, asyncHandler(async (req: AuthReques
           tle2: sat.tle2,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as Array<{
+        noradId: number;
+        name: string;
+        category: string;
+        lat: number;
+        lng: number;
+        alt: number;
+        velocity: number;
+        period: number;
+        inclination: number;
+        owner: string;
+        tle1: string;
+        tle2: string;
+      }>;
 
-    // Apply same plan-based limits as root endpoint
-    const isProUser = req.user?.plan === 'pro';
-    const result = isProUser ? satellites : satellites.slice(0, FREE_TIER_SATELLITE_LIMIT);
+    // Apply count limit and strip TLE data for free users
+    const limited = isProUser ? satellites : satellites.slice(0, FREE_TIER_SATELLITE_LIMIT);
+    const result = stripProData(limited, isProUser);
 
     res.json({
       group,

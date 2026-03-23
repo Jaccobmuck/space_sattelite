@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { getProfileById, type SafeUser } from '../db/index.js';
+import { logger } from '../lib/logger.js';
 
 export interface AuthRequest extends Request {
   user?: SafeUser;
@@ -12,9 +13,10 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     res.status(401).json({ error: 'Access token required' });
     return;
   }
+
   try {
     const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
-    
+
     if (error || !authUser) {
       res.status(401).json({ error: 'Invalid or expired access token' });
       return;
@@ -28,7 +30,11 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
 
     req.user = profile;
     next();
-  } catch {
+  } catch (error) {
+    logger.warn('Auth middleware rejected request', {
+      path: req.path,
+      message: error instanceof Error ? error.message : 'Unknown auth error',
+    });
     res.status(401).json({ error: 'Invalid or expired access token' });
   }
 }
@@ -39,18 +45,23 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
     next();
     return;
   }
+
   try {
     const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
-    
+
     if (!error && authUser) {
       const profile = await getProfileById(authUser.id);
       if (profile) {
         req.user = profile;
       }
     }
-  } catch {
-    // Token invalid — continue as unauthenticated
+  } catch (error) {
+    logger.warn('Optional auth ignored invalid token', {
+      path: req.path,
+      message: error instanceof Error ? error.message : 'Unknown auth error',
+    });
   }
+
   next();
 }
 

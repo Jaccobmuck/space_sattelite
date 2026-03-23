@@ -150,7 +150,12 @@ router.post(
       return;
     }
 
-    const { liked, likeCount } = await toggleLike(user.id, sightingId);
+    const { liked, likeCount, error } = await toggleLike(user.id, sightingId);
+
+    if (error) {
+      res.status(500).json({ error });
+      return;
+    }
 
     res.json({ liked, like_count: likeCount });
   })

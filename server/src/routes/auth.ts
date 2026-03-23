@@ -130,14 +130,24 @@ router.post('/refresh', asyncHandler(async (req: AuthRequest, res: Response) => 
   res.json({ user: profile });
 }));
 
-router.post('/logout', requireAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
-  // Supabase handles session invalidation on client side
-  // Server-side we can optionally sign out all sessions
-  if (req.user) {
-    await supabaseAdmin.auth.admin.signOut(req.user.id);
-  }
+router.post('/logout', asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Always clear cookies first - don't require valid auth to logout
   res.clearCookie('accessToken', cookieOptions);
   res.clearCookie('refreshToken', cookieOptions);
+  
+  // Try to invalidate server-side session if we can identify the user
+  const token = req.cookies?.accessToken;
+  if (token) {
+    try {
+      const { data: { user: authUser } } = await supabaseAdmin.auth.getUser(token);
+      if (authUser) {
+        await supabaseAdmin.auth.admin.signOut(authUser.id);
+      }
+    } catch {
+      // Token invalid/expired - that's fine, cookies are already cleared
+    }
+  }
+  
   res.json({ message: 'Logged out' });
 }));
 

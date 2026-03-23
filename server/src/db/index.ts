@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabase.js';
+import { logger } from '../lib/logger.js';
 
 export interface Profile {
   id: string;
@@ -66,7 +67,11 @@ export async function updateProfile(
     .eq('id', userId);
 
   if (error) {
-    console.error('Failed to update profile:', error);
+    logger.error('Failed to update profile', {
+      userId,
+      code: error.code,
+      message: error.message,
+    });
     return { success: false, error: error.message };
   }
   return { success: true };
@@ -80,6 +85,17 @@ export async function updateUserStripeCustomerId(userId: string, stripeCustomerI
   return updateProfile(userId, { stripe_customer_id: stripeCustomerId });
 }
 
+export async function updateUserBillingState(
+  userId: string,
+  plan: 'free' | 'pro',
+  stripeCustomerId: string
+): Promise<{ success: boolean; error?: string }> {
+  return updateProfile(userId, {
+    plan,
+    stripe_customer_id: stripeCustomerId,
+  });
+}
+
 export async function getProfileByStripeCustomerId(stripeCustomerId: string): Promise<Profile | null> {
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -91,9 +107,14 @@ export async function getProfileByStripeCustomerId(stripeCustomerId: string): Pr
   return data as Profile;
 }
 
-export async function deleteProfile(userId: string): Promise<void> {
+export async function deleteProfile(userId: string): Promise<{ success: boolean; error?: string }> {
   // Delete from Supabase Auth (this will cascade to profiles table)
-  await supabaseAdmin.auth.admin.deleteUser(userId);
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+  
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
 }
 
 // ============================================

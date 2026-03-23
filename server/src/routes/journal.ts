@@ -160,18 +160,20 @@ router.patch(
     const user = req.user!;
     const { notes, is_public, star_rating } = req.body;
 
-    const { success, error } = await updateJournalEntry(req.params.id, user.id, {
+    const { success, entry, error } = await updateJournalEntry(req.params.id, user.id, {
       notes,
       is_public,
       star_rating,
     });
 
-    if (!success) {
-      res.status(400).json({ error: error || 'Failed to update entry' });
+    if (!success || !entry) {
+      // Return 404 for not found/not authorized to prevent enumeration
+      const status = error === 'Entry not found or not authorized' ? 404 : 400;
+      res.status(status).json({ error: error || 'Failed to update entry' });
       return;
     }
 
-    const entry = await getJournalEntryById(req.params.id);
+    // Use the returned entry from the update - never re-fetch by raw id
     res.json({ entry });
   })
 );
@@ -191,7 +193,8 @@ router.delete(
     const { success, error } = await deleteJournalEntry(req.params.id, user.id);
 
     if (!success) {
-      res.status(400).json({ error: error || 'Failed to delete entry' });
+      const status = error === 'Entry not found or not authorized' ? 404 : 400;
+      res.status(status).json({ error: error || 'Failed to delete entry' });
       return;
     }
 

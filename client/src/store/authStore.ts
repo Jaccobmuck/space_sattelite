@@ -117,13 +117,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    try {
-      await api.post('/api/auth/logout');
-    } catch {
-      // Ignore errors on logout
-    }
-    // Server clears HttpOnly cookies
+    // Always clear local state
     set({ user: null });
+    
+    // Server clears HttpOnly cookies - don't swallow errors silently
+    // but still clear local state even if server call fails
+    await api.post('/api/auth/logout');
   },
 
   updateUserEmail: (email) => {

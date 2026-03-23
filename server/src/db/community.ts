@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabase.js';
 import type { JournalEntry } from './journal.js';
+import { logger } from '../lib/logger.js';
 
 export interface CommunitySighting extends JournalEntry {
   user: {
@@ -145,7 +146,13 @@ export async function getCommunityFeed(
   if (tab === 'near_you' && userLat !== undefined && userLng !== undefined) {
     // Approximate bounding box for 150km (rough: 1 degree ≈ 111km)
     const latDelta = HAVERSINE_DISTANCE_KM / 111;
-    const lngDelta = HAVERSINE_DISTANCE_KM / (111 * Math.cos(userLat * Math.PI / 180));
+    
+    // Special case for polar regions: cos(90°) = 0 causes division issues
+    // At high latitudes (>85°), use a wide longitude range since distances converge
+    const cosLat = Math.cos(userLat * Math.PI / 180);
+    const lngDelta = Math.abs(cosLat) < 0.087 // ~85 degrees latitude
+      ? 180 // Near poles, search all longitudes
+      : HAVERSINE_DISTANCE_KM / (111 * cosLat);
     
     query = query
       .gte('lat', userLat - latDelta)
@@ -154,10 +161,21 @@ export async function getCommunityFeed(
       .lte('lng', userLng + lngDelta);
   }
 
-  const { data, error, count } = await query.range(offset, offset + limit - 1);
+  if (tab !== 'near_you') {
+    query = query.range(offset, offset + limit - 1);
+  }
+
+  const { data, error, count } = await query;
 
   if (error) {
-    console.error('Error fetching community feed:', error);
+    logger.error('Error fetching community feed', {
+      tab,
+      page,
+      limit,
+      currentUserId,
+      code: error.code,
+      message: error.message,
+    });
     throw new Error(`Database error fetching community feed: ${error.message}`);
   }
 
@@ -165,7 +183,7 @@ export async function getCommunityFeed(
     return { sightings: [], total: 0, hasMore: false };
   }
 
-  // For "near_you", apply precise Haversine filter
+  // For "near_you", apply precise Haversine filter before paginating so totals stay honest.
   let filteredData = data;
   if (tab === 'near_you' && userLat !== undefined && userLng !== undefined) {
     filteredData = data.filter((entry) => {
@@ -175,15 +193,19 @@ export async function getCommunityFeed(
     });
   }
 
+  const paginatedData = tab === 'near_you'
+    ? filteredData.slice(offset, offset + limit)
+    : filteredData;
+
   // Batch fetch like/comment counts and user likes to avoid N+1 queries
-  const sightingIds = filteredData.map(entry => entry.id);
+  const sightingIds = paginatedData.map(entry => entry.id);
   const [likeCounts, commentCounts, userLikes] = await Promise.all([
     getBatchLikeCounts(sightingIds),
     getBatchCommentCounts(sightingIds),
     currentUserId ? getBatchUserLikes(currentUserId, sightingIds) : new Set<string>(),
   ]);
 
-  const sightings = filteredData.map((entry) => {
+  const sightings = paginatedData.map((entry) => {
     const profile = entry.profiles as {
       id: string;
       username: string;
@@ -206,12 +228,8 @@ export async function getCommunityFeed(
     } as CommunitySighting;
   });
 
-  // For near_you tab, the total count from the bounding box query may not match
-  // the actual filtered results, so we adjust hasMore based on actual data
   const actualTotal = tab === 'near_you' ? filteredData.length : (count || 0);
-  const hasMore = tab === 'near_you' 
-    ? filteredData.length === limit // If we got a full page, there might be more
-    : offset + limit < (count || 0);
+  const hasMore = offset + limit < actualTotal;
 
   return {
     sightings,
@@ -300,21 +318,44 @@ export async function hasUserLiked(userId: string, sightingId: string): Promise<
 export async function toggleLike(
   userId: string,
   sightingId: string
-): Promise<{ liked: boolean; likeCount: number }> {
+): Promise<{ liked: boolean; likeCount: number; error?: string }> {
   const alreadyLiked = await hasUserLiked(userId, sightingId);
 
   if (alreadyLiked) {
-    // Unlike
-    await supabaseAdmin
+    // Unlike - check for errors
+    const { error } = await supabaseAdmin
       .from('community_likes')
       .delete()
       .eq('user_id', userId)
       .eq('sighting_id', sightingId);
+    
+    if (error) {
+      logger.error('Failed to remove community like', {
+        userId,
+        sightingId,
+        code: error.code,
+        message: error.message,
+      });
+      return { liked: true, likeCount: await getLikeCount(sightingId), error: 'Failed to unlike' };
+    }
   } else {
-    // Like
-    await supabaseAdmin
+    // Like - use upsert to handle race conditions with uniqueness constraint
+    const { error } = await supabaseAdmin
       .from('community_likes')
-      .insert({ user_id: userId, sighting_id: sightingId });
+      .upsert(
+        { user_id: userId, sighting_id: sightingId },
+        { onConflict: 'user_id,sighting_id', ignoreDuplicates: true }
+      );
+    
+    if (error) {
+      logger.error('Failed to create community like', {
+        userId,
+        sightingId,
+        code: error.code,
+        message: error.message,
+      });
+      return { liked: false, likeCount: await getLikeCount(sightingId), error: 'Failed to like' };
+    }
   }
 
   const likeCount = await getLikeCount(sightingId);
@@ -357,7 +398,14 @@ export async function getComments(
     .range(offset, offset + limit - 1);
 
   if (error || !data) {
-    return { comments: [], total: 0 };
+    logger.error('Failed to fetch community comments', {
+      sightingId,
+      page,
+      limit,
+      code: error?.code,
+      message: error?.message,
+    });
+    throw new Error(error?.message || 'Failed to fetch comments');
   }
 
   const comments = data.map((comment) => {
@@ -472,6 +520,7 @@ export async function getProfileStats(userId: string): Promise<ProfileStats> {
     .from('journal_entries')
     .select('satellite_name, created_at')
     .eq('user_id', userId)
+    .eq('is_public', true)
     .eq('outcome', 'saw_it')
     .order('created_at', { ascending: false });
 
