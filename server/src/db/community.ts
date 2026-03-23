@@ -156,8 +156,12 @@ export async function getCommunityFeed(
 
   const { data, error, count } = await query.range(offset, offset + limit - 1);
 
-  if (error || !data) {
+  if (error) {
     console.error('Error fetching community feed:', error);
+    throw new Error(`Database error fetching community feed: ${error.message}`);
+  }
+
+  if (!data) {
     return { sightings: [], total: 0, hasMore: false };
   }
 

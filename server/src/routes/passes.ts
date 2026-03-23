@@ -6,12 +6,18 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
+// Bright satellites visible to naked eye - ISS, Tiangong, Hubble, Aqua
 const BRIGHT_SATELLITES = [
-  25544,
-  48274,
-  20580,
-  27424,
+  25544,  // ISS (ZARYA) - brightest artificial satellite
+  48274,  // Tiangong (Chinese Space Station)
+  20580,  // Hubble Space Telescope
+  27424,  // Aqua (Earth observation)
 ];
+
+// Pass prediction configuration
+const PASS_PREDICTION_DAYS = 7;           // How many days ahead to predict passes
+const MIN_ELEVATION_DEGREES = 10;         // Minimum peak elevation to include a pass (filters low horizon passes)
+const MAX_PASSES_RETURNED = 20;           // Maximum number of passes to return in response
 
 router.get('/', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, res: Response) => {
     const lat = parseFloat(req.query.lat as string);
@@ -37,8 +43,8 @@ router.get('/', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, r
           sat.tle1,
           sat.tle2,
           observer,
-          7,
-          10
+          PASS_PREDICTION_DAYS,
+          MIN_ELEVATION_DEGREES
         );
       }
     } else {
@@ -51,8 +57,8 @@ router.get('/', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, r
             sat.tle1,
             sat.tle2,
             observer,
-            7,
-            10
+            PASS_PREDICTION_DAYS,
+            MIN_ELEVATION_DEGREES
           );
           allPasses.push(...passes);
         }
@@ -66,7 +72,7 @@ router.get('/', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, r
     res.json({
       observer: { lat, lng },
       count: allPasses.length,
-      passes: allPasses.slice(0, 20),
+      passes: allPasses.slice(0, MAX_PASSES_RETURNED),
       timestamp: new Date().toISOString(),
     });
 }));

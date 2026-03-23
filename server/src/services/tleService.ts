@@ -150,8 +150,8 @@ NAVSTAR 75 (USA 265)
 1 41328U 16007A   24070.50000000  .00000010  00000-0  00000-0 0  9991
 2 41328  55.0000 240.0000 0005000  90.0000 270.0000  2.00560000420000
 NAVSTAR 76 (USA 266)
-1 41866U 16030A   24070.50000000  .00000010  00000-0  00000-0 0  9991
-2 41866  55.0000 300.0000 0005000  90.0000 270.0000  2.00560000400000
+1 41384U 16030A   24070.50000000  .00000010  00000-0  00000-0 0  9991
+2 41384  55.0000 300.0000 0005000  90.0000 270.0000  2.00560000400000
 NAVSTAR 77 (USA 289)
 1 43873U 18109A   24070.50000000  .00000010  00000-0  00000-0 0  9991
 2 43873  55.0000  15.0000 0005000  90.0000 270.0000  2.00560000380000
@@ -471,6 +471,8 @@ GRACE-FO 2
 1 43477U 18047B   24070.50000000  .00000200  00000-0  15000-4 0  9991
 2 43477  89.0000 240.0000 0010000  90.0000 270.0000 15.20000000001000`;
 
+const CELESTRAK_BASE_URL = process.env.CELESTRAK_BASE_URL || 'https://celestrak.org';
+
 export async function fetchTLEData(): Promise<TLEData[]> {
   const axiosConfig = {
     timeout: 30000,
@@ -482,10 +484,10 @@ export async function fetchTLEData(): Promise<TLEData[]> {
 
   try {
     const [stationsRes, gpsRes, weatherRes, starlinkRes] = await Promise.allSettled([
-      axios.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle', axiosConfig),
-      axios.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle', axiosConfig),
-      axios.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle', axiosConfig),
-      axios.get('https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle', axiosConfig),
+      axios.get(`${CELESTRAK_BASE_URL}/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle`, axiosConfig),
+      axios.get(`${CELESTRAK_BASE_URL}/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle`, axiosConfig),
+      axios.get(`${CELESTRAK_BASE_URL}/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle`, axiosConfig),
+      axios.get(`${CELESTRAK_BASE_URL}/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle`, axiosConfig),
     ]);
 
     const allSatellites: TLEData[] = [];

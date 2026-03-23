@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import api from '../lib/api';
+import { useAuthStore } from '../store/authStore';
 import type { PublicProfile, ProfileStats, CommunitySighting, FeedPagination } from '../types';
 
 interface ProfileResponse {
@@ -64,7 +65,7 @@ export function useCheckUsername() {
 }
 
 export function useSetUsername() {
-  const queryClient = useQueryClient();
+  const refreshUser = useAuthStore((state) => state.refreshUser);
 
   return useMutation({
     mutationFn: async (username: string) => {
@@ -72,13 +73,15 @@ export function useSetUsername() {
       return data.username;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
+      // Refresh Zustand auth state instead of dead React Query invalidation
+      refreshUser();
     },
   });
 }
 
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
+  const refreshUser = useAuthStore((state) => state.refreshUser);
 
   return useMutation({
     mutationFn: async (fields: {
@@ -93,7 +96,8 @@ export function useUpdateProfile() {
       await api.patch('/api/profile/me', fields);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
+      // Refresh Zustand auth state instead of dead React Query invalidation
+      refreshUser();
       queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
   });

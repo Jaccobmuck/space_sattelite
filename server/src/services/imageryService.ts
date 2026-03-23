@@ -78,8 +78,13 @@ function getGOESImagery(satelliteId: number, satInfo: { name: string; goesId: st
 }
 
 async function getNASAEPICImagery(): Promise<ImageryItem[]> {
+  const apiKey = process.env.NASA_API_KEY;
+  if (!apiKey) {
+    console.warn('NASA_API_KEY not configured, skipping EPIC imagery');
+    return [];
+  }
+
   try {
-    const apiKey = process.env.NASA_API_KEY || 'DEMO_KEY';
     const response = await axios.get(
       'https://api.nasa.gov/EPIC/api/natural/images',
       {
@@ -118,15 +123,9 @@ async function getISSImagery(): Promise<ImageryItem[]> {
   const epicImages = await getNASAEPICImagery();
   images.push(...epicImages);
 
-  images.push({
-    id: 'iss-live-1',
-    title: 'ISS HD Earth Viewing',
-    url: 'https://eol.jsc.nasa.gov/DatabaseImages/ESC/large/ISS070/ISS070-E-56789.JPG',
-    thumbnailUrl: 'https://eol.jsc.nasa.gov/DatabaseImages/ESC/small/ISS070/ISS070-E-56789.JPG',
-    date: new Date().toISOString(),
-    description: 'Earth observation from the International Space Station',
-    type: 'earth_observation',
-  });
+  // Note: ISS imagery requires dynamic feed from NASA Image API
+  // Static URLs removed as they become stale quickly
+  // TODO: Implement NASA Image API integration for fresh ISS photos
 
   return images;
 }

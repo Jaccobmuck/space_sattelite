@@ -17,12 +17,3 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
     persistSession: false,
   },
 });
-
-// Create a client for verifying user tokens
-export function createSupabaseClient(accessToken?: string) {
-  return createClient(supabaseUrl, process.env.SUPABASE_ANON_KEY!, {
-    global: {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    },
-  });
-}

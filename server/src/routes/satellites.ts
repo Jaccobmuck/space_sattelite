@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { getTLEData } from '../services/tleService.js';
 import { propagateSatellite, propagateOrbit } from '../services/propagationService.js';
 import { optionalAuth, requireAuth, requirePro, type AuthRequest } from '../middleware/auth.js';
@@ -43,8 +43,10 @@ router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Respons
     });
 }));
 
-router.get('/category/:group', async (req: Request, res: Response) => {
-  try {
+// Free tier limit for category endpoint (same as root endpoint)
+const FREE_TIER_SATELLITE_LIMIT = 30;
+
+router.get('/category/:group', optionalAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
     const group = req.params.group.toLowerCase();
     const tleData = await getTLEData();
 
@@ -98,17 +100,19 @@ router.get('/category/:group', async (req: Request, res: Response) => {
       })
       .filter(Boolean);
 
+    // Apply same plan-based limits as root endpoint
+    const isProUser = req.user?.plan === 'pro';
+    const result = isProUser ? satellites : satellites.slice(0, FREE_TIER_SATELLITE_LIMIT);
+
     res.json({
       group,
-      count: satellites.length,
+      count: result.length,
+      total: satellites.length,
+      limited: !isProUser,
       timestamp: new Date().toISOString(),
-      satellites,
+      satellites: result,
     });
-  } catch (error) {
-    console.error('Error fetching satellites by category:', error);
-    res.status(500).json({ error: 'Failed to fetch satellite data' });
-  }
-});
+}));
 
 router.get('/:noradId', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, res: Response) => {
     const noradId = parseInt(req.params.noradId, 10);
