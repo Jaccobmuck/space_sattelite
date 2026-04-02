@@ -27,10 +27,23 @@ router.get('/space', requireAuth, requirePro, asyncHandler(async (_req: AuthRequ
       }),
     ]);
 
-    let kpIndex = 0;
+    // Track data availability - don't fabricate data on failure
+    const kpDataAvailable = kpResponse.status === 'fulfilled' && kpResponse.value.data.length > 0;
+    const xrayDataAvailable = xrayResponse.status === 'fulfilled' && xrayResponse.value.data.length > 0;
+
+    // If both sources failed, return an error
+    if (!kpDataAvailable && !xrayDataAvailable) {
+      res.status(503).json({ 
+        error: 'Space weather data temporarily unavailable',
+        dataAvailable: false,
+      });
+      return;
+    }
+
+    let kpIndex: number | null = null;
     let kpHistory: { time: string; value: number }[] = [];
 
-    if (kpResponse.status === 'fulfilled' && kpResponse.value.data.length > 0) {
+    if (kpDataAvailable) {
       const kpData = kpResponse.value.data;
       const latestKp = kpData[kpData.length - 1];
       kpIndex = parseFloat(latestKp.kp) || 0;
@@ -41,10 +54,10 @@ router.get('/space', requireAuth, requirePro, asyncHandler(async (_req: AuthRequ
       }));
     }
 
-    let xrayFlux = 0;
+    let xrayFlux: number | null = null;
     let flareClass: string | null = null;
 
-    if (xrayResponse.status === 'fulfilled' && xrayResponse.value.data.length > 0) {
+    if (xrayDataAvailable) {
       const xrayData = xrayResponse.value.data;
       const latestXray = xrayData[xrayData.length - 1];
       xrayFlux = latestXray.flux;
@@ -56,22 +69,27 @@ router.get('/space', requireAuth, requirePro, asyncHandler(async (_req: AuthRequ
       else flareClass = 'A';
     }
 
-    let solarLevel: 'quiet' | 'minor' | 'moderate' | 'strong' | 'severe' | 'extreme' = 'quiet';
-    if (kpIndex >= 9) solarLevel = 'extreme';
-    else if (kpIndex >= 8) solarLevel = 'severe';
-    else if (kpIndex >= 7) solarLevel = 'strong';
-    else if (kpIndex >= 5) solarLevel = 'moderate';
-    else if (kpIndex >= 4) solarLevel = 'minor';
-
-    let auroraVisibility: 'none' | 'low' | 'moderate' | 'high' = 'none';
-    if (kpIndex >= 7) auroraVisibility = 'high';
-    else if (kpIndex >= 5) auroraVisibility = 'moderate';
-    else if (kpIndex >= 4) auroraVisibility = 'low';
-
+    let solarLevel: 'quiet' | 'minor' | 'moderate' | 'strong' | 'severe' | 'extreme' | null = null;
+    let auroraVisibility: 'none' | 'low' | 'moderate' | 'high' | null = null;
     let stormLevel: string | null = null;
-    if (kpIndex >= 5) {
-      const gLevel = Math.min(5, Math.floor(kpIndex - 4));
-      stormLevel = `G${gLevel}`;
+
+    if (kpIndex !== null) {
+      solarLevel = 'quiet';
+      if (kpIndex >= 9) solarLevel = 'extreme';
+      else if (kpIndex >= 8) solarLevel = 'severe';
+      else if (kpIndex >= 7) solarLevel = 'strong';
+      else if (kpIndex >= 5) solarLevel = 'moderate';
+      else if (kpIndex >= 4) solarLevel = 'minor';
+
+      auroraVisibility = 'none';
+      if (kpIndex >= 7) auroraVisibility = 'high';
+      else if (kpIndex >= 5) auroraVisibility = 'moderate';
+      else if (kpIndex >= 4) auroraVisibility = 'low';
+
+      if (kpIndex >= 5) {
+        const gLevel = Math.min(5, Math.floor(kpIndex - 4));
+        stormLevel = `G${gLevel}`;
+      }
     }
 
     const alerts: Array<{
@@ -92,7 +110,7 @@ router.get('/space', requireAuth, requirePro, asyncHandler(async (_req: AuthRequ
       });
     }
 
-    if (kpIndex >= 5) {
+    if (kpIndex !== null && kpIndex >= 5) {
       alerts.push({
         id: `storm-${Date.now()}`,
         type: 'storm',
@@ -107,11 +125,13 @@ router.get('/space', requireAuth, requirePro, asyncHandler(async (_req: AuthRequ
         level: solarLevel,
         xrayFlux,
         flareClass,
+        dataAvailable: xrayDataAvailable,
       },
       geomagneticActivity: {
         kpIndex,
         kpHistory,
         stormLevel,
+        dataAvailable: kpDataAvailable,
       },
       aurora: {
         visibility: auroraVisibility,

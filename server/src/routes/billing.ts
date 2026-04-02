@@ -2,9 +2,15 @@ import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { updateUserPlan, updateUserStripeCustomerId, getUserByStripeCustomerId } from '../db/index.js';
+import { getProfileByStripeCustomerId, updateUserBillingState, updateUserPlan } from '../db/index.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
+
+const PRO_ENTITLED_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>([
+  'active',
+  'trialing',
+]);
 
 function getStripe(): Stripe {
   return new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -19,6 +25,29 @@ router.post(
     const stripe = getStripe();
     const user = req.user!;
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+
+    // Check for existing active/trialing subscription to prevent double-billing
+    if (user.stripe_customer_id) {
+      const existingSubs = await stripe.subscriptions.list({
+        customer: user.stripe_customer_id,
+        status: 'all',
+      });
+      
+      const activeSub = existingSubs.data.find(sub => 
+        PRO_ENTITLED_SUBSCRIPTION_STATUSES.has(sub.status)
+      );
+      
+      if (activeSub) {
+        res.status(409).json({ 
+          error: 'You already have an active subscription. Manage it from the billing portal.',
+          hasSubscription: true,
+        });
+        return;
+      }
+    }
+
+    // Stable idempotency key prevents duplicate sessions from retries/double-clicks.
+    const idempotencyKey = `checkout_${user.id}_${process.env.STRIPE_PRO_PRICE_ID!}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -36,6 +65,8 @@ router.post(
       },
       success_url: `${clientUrl}/account?upgrade=success`,
       cancel_url: `${clientUrl}/account?upgrade=cancelled`,
+    }, {
+      idempotencyKey,
     });
 
     res.json({ url: session.url });
@@ -83,7 +114,9 @@ router.post(
         process.env.STRIPE_WEBHOOK_SECRET!
       );
     } catch (err) {
-      console.error('Webhook signature verification failed:', err);
+      logger.error('Webhook signature verification failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
       res.status(400).json({ error: 'Webhook signature verification failed' });
       return;
     }
@@ -91,15 +124,68 @@ router.post(
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.metadata?.userId ? parseInt(session.metadata.userId, 10) : null;
+        const userId = session.metadata?.userId || null;
         const customerId = session.customer as string;
 
         if (userId) {
-          updateUserPlan(userId, 'pro');
-          if (customerId) {
-            updateUserStripeCustomerId(userId, customerId);
+          if (!customerId) {
+            logger.error('Checkout session completed without Stripe customer ID', {
+              userId,
+              eventId: event.id,
+              sessionId: session.id,
+            });
+            res.status(500).json({ error: 'Missing Stripe customer ID' });
+            return;
           }
-          console.log(`User ${userId} upgraded to Pro`);
+
+          const billingResult = await updateUserBillingState(userId, 'pro', customerId);
+          if (!billingResult.success) {
+            logger.error('Failed to persist billing state after checkout', {
+              userId,
+              customerId,
+              eventId: event.id,
+              error: billingResult.error,
+            });
+            res.status(500).json({ error: 'Failed to persist billing state' });
+            return;
+          }
+
+          logger.info('User upgraded to Pro', {
+            userId,
+            customerId,
+            eventId: event.id,
+          });
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        // Handle subscription status changes (e.g., past_due, unpaid)
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId = subscription.customer as string;
+        const user = await getProfileByStripeCustomerId(customerId);
+        
+        if (user) {
+          if (!PRO_ENTITLED_SUBSCRIPTION_STATUSES.has(subscription.status)) {
+            const result = await updateUserPlan(user.id, 'free');
+            if (!result.success) {
+              logger.error('Failed to downgrade user after subscription update', {
+                userId: user.id,
+                customerId,
+                status: subscription.status,
+                eventId: event.id,
+                error: result.error,
+              });
+              res.status(500).json({ error: 'Failed to update user plan' });
+              return;
+            }
+            logger.info('User downgraded to free after subscription update', {
+              userId: user.id,
+              customerId,
+              status: subscription.status,
+              eventId: event.id,
+            });
+          }
         }
         break;
       }
@@ -107,10 +193,24 @@ router.post(
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
-        const user = getUserByStripeCustomerId(customerId);
+        const user = await getProfileByStripeCustomerId(customerId);
         if (user) {
-          updateUserPlan(user.id, 'free');
-          console.log(`User ${user.id} downgraded to free (subscription deleted)`);
+          const result = await updateUserPlan(user.id, 'free');
+          if (!result.success) {
+            logger.error('Failed to downgrade user after subscription deletion', {
+              userId: user.id,
+              customerId,
+              eventId: event.id,
+              error: result.error,
+            });
+            res.status(500).json({ error: 'Failed to update user plan' });
+            return;
+          }
+          logger.info('User downgraded to free after subscription deletion', {
+            userId: user.id,
+            customerId,
+            eventId: event.id,
+          });
         }
         break;
       }
@@ -118,9 +218,13 @@ router.post(
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
-        const user = getUserByStripeCustomerId(customerId);
+        const user = await getProfileByStripeCustomerId(customerId);
         if (user) {
-          console.warn(`Payment failed for user ${user.id} (customer: ${customerId})`);
+          logger.warn('Stripe invoice payment failed', {
+            userId: user.id,
+            customerId,
+            eventId: event.id,
+          });
         }
         break;
       }

@@ -26,8 +26,24 @@ interface AstrosResponse {
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const lat = parseFloat(req.query.lat as string) || 0;
-    const lng = parseFloat(req.query.lng as string) || 0;
+    // Validate lat/lng if provided
+    const latParam = req.query.lat as string | undefined;
+    const lngParam = req.query.lng as string | undefined;
+    
+    let lat: number | undefined;
+    let lng: number | undefined;
+    
+    if (latParam !== undefined || lngParam !== undefined) {
+      lat = parseFloat(latParam || '');
+      lng = parseFloat(lngParam || '');
+      
+      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        res.status(400).json({ 
+          error: 'Invalid coordinates. lat must be -90 to 90, lng must be -180 to 180' 
+        });
+        return;
+      }
+    }
 
     const tleData = await getTLEData();
     const issTLE = tleData.find((s) => s.noradId === ISS_NORAD_ID);
@@ -49,7 +65,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       groundTrack = propagateGroundTrack(issTLE.tle1, issTLE.tle2, 90, 1);
 
-      if (lat !== 0 || lng !== 0) {
+      if (lat !== undefined && lng !== undefined) {
         passes = computePasses(
           'ISS (ZARYA)',
           ISS_NORAD_ID,
@@ -64,7 +80,8 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (!position) {
       try {
-        const openNotifyUrl = process.env.OPEN_NOTIFY_URL || 'http://api.open-notify.org';
+        // Use HTTPS for external API calls
+        const openNotifyUrl = process.env.OPEN_NOTIFY_URL || 'https://api.open-notify.org';
         const issResponse = await axios.get<OpenNotifyResponse>(
           `${openNotifyUrl}/iss-now.json`,
           { timeout: 5000 }
@@ -81,9 +98,18 @@ router.get('/', async (req: Request, res: Response) => {
       }
     }
 
+    // If we still don't have position data, return an error instead of null
+    if (!position) {
+      res.status(503).json({ 
+        error: 'ISS position data temporarily unavailable' 
+      });
+      return;
+    }
+
     let crew: Array<{ name: string; agency: string; role: string; daysInSpace: number }> = [];
     try {
-      const openNotifyUrl = process.env.OPEN_NOTIFY_URL || 'http://api.open-notify.org';
+      // Use HTTPS for external API calls
+      const openNotifyUrl = process.env.OPEN_NOTIFY_URL || 'https://api.open-notify.org';
       const astrosResponse = await axios.get<AstrosResponse>(
         `${openNotifyUrl}/astros.json`,
         { timeout: 5000 }

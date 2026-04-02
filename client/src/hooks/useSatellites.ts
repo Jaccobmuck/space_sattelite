@@ -17,13 +17,26 @@ async function fetchSatellites(): Promise<SatellitesResponse> {
   return data;
 }
 
+// Simple FNV-1a hash for efficient TLE change detection
+function hashTLEData(satellites: Satellite[]): number {
+  let hash = 2166136261; // FNV offset basis
+  for (const sat of satellites) {
+    const str = sat.tle1 + sat.tle2;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = Math.imul(hash, 16777619); // FNV prime
+    }
+  }
+  return hash >>> 0; // Convert to unsigned 32-bit
+}
+
 export function useSatellites() {
   const setSatellites = useAppStore((state) => state.setSatellites);
   const setSatrecMap = useAppStore((state) => state.setSatrecMap);
   const setLoading = useAppStore((state) => state.setLoading);
   const setError = useAppStore((state) => state.setError);
   const plan = useAuthStore((s) => s.user?.plan ?? 'free');
-  const lastTleHashRef = useRef<string>('');
+  const lastTleHashRef = useRef<number>(0);
 
   const query = useQuery({
     queryKey: ['satellites', plan],
@@ -37,8 +50,8 @@ export function useSatellites() {
       const satellites = query.data.satellites;
       setSatellites(satellites);
 
-      // Create a hash of TLE data to detect changes
-      const tleHash = satellites.map(s => s.tle1 + s.tle2).join('');
+      // Use FNV-1a hash for efficient TLE change detection instead of concatenating all strings
+      const tleHash = hashTLEData(satellites);
       if (tleHash !== lastTleHashRef.current) {
         lastTleHashRef.current = tleHash;
 

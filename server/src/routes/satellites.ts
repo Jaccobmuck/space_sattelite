@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { getTLEData } from '../services/tleService.js';
 import { propagateSatellite, propagateOrbit } from '../services/propagationService.js';
 import { optionalAuth, requireAuth, requirePro, type AuthRequest } from '../middleware/auth.js';
@@ -6,8 +6,21 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
+// Free tier limits
+const FREE_TIER_SATELLITE_LIMIT = 30;
+
+// Strip TLE/orbit data from free-tier responses to enforce paid feature
+function stripProData<T extends { tle1?: string; tle2?: string }>(satellites: T[], isProUser: boolean): T[] {
+  if (isProUser) return satellites;
+  return satellites.map(sat => {
+    const { tle1, tle2, ...rest } = sat as T & { tle1?: string; tle2?: string };
+    return rest as T;
+  });
+}
+
 router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
     const tleData = await getTLEData();
+    const isProUser = req.user?.plan === 'pro';
 
     const satellites = tleData
       .map((sat) => {
@@ -29,10 +42,24 @@ router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Respons
           tle2: sat.tle2,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as Array<{
+        noradId: number;
+        name: string;
+        category: string;
+        lat: number;
+        lng: number;
+        alt: number;
+        velocity: number;
+        period: number;
+        inclination: number;
+        owner: string;
+        tle1: string;
+        tle2: string;
+      }>;
 
-    const isProUser = req.user?.plan === 'pro';
-    const result = isProUser ? satellites : satellites.slice(0, 10);
+    // Apply count limit and strip TLE data for free users
+    const limited = isProUser ? satellites : satellites.slice(0, FREE_TIER_SATELLITE_LIMIT);
+    const result = stripProData(limited, isProUser);
 
     res.json({
       count: result.length,
@@ -43,10 +70,10 @@ router.get('/', optionalAuth, asyncHandler(async (req: AuthRequest, res: Respons
     });
 }));
 
-router.get('/category/:group', async (req: Request, res: Response) => {
-  try {
+router.get('/category/:group', optionalAuth, asyncHandler(async (req: AuthRequest, res: Response) => {
     const group = req.params.group.toLowerCase();
     const tleData = await getTLEData();
+    const isProUser = req.user?.plan === 'pro';
 
     // Map group names to categories
     const groupToCategoryMap: Record<string, string[]> = {
@@ -96,19 +123,34 @@ router.get('/category/:group', async (req: Request, res: Response) => {
           tle2: sat.tle2,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean) as Array<{
+        noradId: number;
+        name: string;
+        category: string;
+        lat: number;
+        lng: number;
+        alt: number;
+        velocity: number;
+        period: number;
+        inclination: number;
+        owner: string;
+        tle1: string;
+        tle2: string;
+      }>;
+
+    // Apply count limit and strip TLE data for free users
+    const limited = isProUser ? satellites : satellites.slice(0, FREE_TIER_SATELLITE_LIMIT);
+    const result = stripProData(limited, isProUser);
 
     res.json({
       group,
-      count: satellites.length,
+      count: result.length,
+      total: satellites.length,
+      limited: !isProUser,
       timestamp: new Date().toISOString(),
-      satellites,
+      satellites: result,
     });
-  } catch (error) {
-    console.error('Error fetching satellites by category:', error);
-    res.status(500).json({ error: 'Failed to fetch satellite data' });
-  }
-});
+}));
 
 router.get('/:noradId', requireAuth, requirePro, asyncHandler(async (req: AuthRequest, res: Response) => {
     const noradId = parseInt(req.params.noradId, 10);

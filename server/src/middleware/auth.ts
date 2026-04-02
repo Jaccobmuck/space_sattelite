@@ -1,52 +1,93 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { getUserById, type SafeUser } from '../db/index.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { getProfileById, type SafeUser } from '../db/index.js';
+import { logger } from '../lib/logger.js';
 
 export interface AuthRequest extends Request {
   user?: SafeUser;
 }
 
+<<<<<<< HEAD
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const match = authHeader?.match(/^Bearer ([^\s]+)$/);
   if (!match) {
+=======
+export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  const token = req.cookies?.accessToken;
+  if (!token) {
+>>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
     res.status(401).json({ error: 'Access token required' });
     return;
   }
 
+<<<<<<< HEAD
   const token = match[1];
+=======
+>>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
   try {
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { userId: number };
-    const user = getUserById(payload.userId);
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
+    const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
+
+    if (error || !authUser) {
+      res.status(401).json({ error: 'Invalid or expired access token' });
       return;
     }
-    req.user = user;
+
+    const profile = await getProfileById(authUser.id);
+    if (!profile) {
+      res.status(401).json({ error: 'User profile not found' });
+      return;
+    }
+    if (profile.pending_deletion) {
+      res.status(403).json({ error: 'Account deletion in progress' });
+      return;
+    }
+
+    req.user = profile;
     next();
-  } catch {
+  } catch (error) {
+    logger.warn('Auth middleware rejected request', {
+      path: req.path,
+      message: error instanceof Error ? error.message : 'Unknown auth error',
+    });
     res.status(401).json({ error: 'Invalid or expired access token' });
   }
 }
 
+<<<<<<< HEAD
 export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const match = authHeader?.match(/^Bearer ([^\s]+)$/);
   if (!match) {
+=======
+export async function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
+  const token = req.cookies?.accessToken;
+  if (!token) {
+>>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
     next();
     return;
   }
 
+<<<<<<< HEAD
   const token = match[1];
+=======
+>>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
   try {
-    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { userId: number };
-    const user = getUserById(payload.userId);
-    if (user) {
-      req.user = user;
+    const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
+
+    if (!error && authUser) {
+      const profile = await getProfileById(authUser.id);
+      if (profile && !profile.pending_deletion) {
+        req.user = profile;
+      }
     }
-  } catch {
-    // Token invalid — continue as unauthenticated
+  } catch (error) {
+    logger.warn('Optional auth ignored invalid token', {
+      path: req.path,
+      message: error instanceof Error ? error.message : 'Unknown auth error',
+    });
   }
+
   next();
 }
 

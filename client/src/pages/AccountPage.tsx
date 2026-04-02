@@ -85,7 +85,7 @@ export default function AccountPage() {
   const updateUserEmail = useAuthStore((s) => s.updateUserEmail);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [upgradeStatus, setUpgradeStatus] = useState<'success' | 'cancelled' | null>(null);
+  const [upgradeStatus, setUpgradeStatus] = useState<'success' | 'cancelled' | 'pending' | null>(null);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Toast state
@@ -113,14 +113,24 @@ export default function AccountPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get('upgrade') === 'success') {
-      setUpgradeStatus('success');
-      setSearchParams({}, { replace: true });
-      useAuthStore.getState().refreshToken();
-    } else if (searchParams.get('upgrade') === 'cancelled') {
-      setUpgradeStatus('cancelled');
-      setSearchParams({}, { replace: true });
+    async function handleUpgradeCallback() {
+      if (searchParams.get('upgrade') === 'success') {
+        setSearchParams({}, { replace: true });
+        // Refresh user data and verify backend actually reflects pro status
+        await useAuthStore.getState().refreshUser();
+        const updatedUser = useAuthStore.getState().user;
+        if (updatedUser?.plan === 'pro') {
+          setUpgradeStatus('success');
+        } else {
+          // Webhook may be delayed - show pending message instead of false success
+          setUpgradeStatus('pending');
+        }
+      } else if (searchParams.get('upgrade') === 'cancelled') {
+        setUpgradeStatus('cancelled');
+        setSearchParams({}, { replace: true });
+      }
     }
+    handleUpgradeCallback();
   }, [searchParams, setSearchParams]);
 
   async function handleUpgrade() {
@@ -189,7 +199,7 @@ export default function AccountPage() {
     try {
       const { data } = await api.patch('/api/account/email', {
         new_email: newEmail,
-        password: emailPassword,
+        current_password: emailPassword,
       });
       updateUserEmail(data.email);
       setNewEmail('');
@@ -211,7 +221,7 @@ export default function AccountPage() {
     }
     setDeleteLoading(true);
     try {
-      await api.delete('/api/account', { data: { password: deletePassword } });
+      await api.delete('/api/account', { data: { current_password: deletePassword } });
       await logout();
       navigate('/');
     } catch (err) {
@@ -247,6 +257,11 @@ export default function AccountPage() {
           {upgradeStatus === 'success' && (
             <div className="bg-accent-green/20 border border-accent-green/50 text-accent-green rounded px-4 py-3 text-sm">
               🎉 Welcome to Pro! Your account has been upgraded.
+            </div>
+          )}
+          {upgradeStatus === 'pending' && (
+            <div className="bg-accent-blue/20 border border-accent-blue/50 text-accent-blue rounded px-4 py-3 text-sm">
+              ⏳ Payment received! Your upgrade is being processed. Please refresh in a moment.
             </div>
           )}
           {upgradeStatus === 'cancelled' && (

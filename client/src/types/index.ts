@@ -126,3 +126,75 @@ export interface PinnedSatellite {
   color: string;
   groundTrack: GroundTrack | null;
 }
+
+// ============================================
+// Journal & Community Types
+// ============================================
+
+export type JournalOutcome = 'saw_it' | 'missed_it' | 'cloudy';
+
+export interface JournalEntry {
+  id: string;
+  user_id: string;
+  satellite_name: string;
+  pass_timestamp: string;
+  city: string | null;
+  region: string | null;
+  lat: number | null;
+  lng: number | null;
+  star_rating: number | null;
+  notes: string | null;
+  card_image: string | null;
+  outcome: JournalOutcome;
+  is_public: boolean;
+  created_at: string;
+}
+
+export interface CommunityUser {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar: string | null;
+}
+
+export interface CommunitySighting extends JournalEntry {
+  user: CommunityUser;
+  like_count: number;
+  comment_count: number;
+  user_liked: boolean;
+}
+
+export interface CommunityComment {
+  id: string;
+  user_id: string;
+  sighting_id: string;
+  text: string;
+  created_at: string;
+  user: CommunityUser;
+}
+
+export interface PublicProfile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar: string | null;
+  bio: string | null;
+  location_city: string | null;
+  location_region: string | null;
+  created_at: string;
+}
+
+export interface ProfileStats {
+  totalSightings: number;
+  uniqueSatellites: number;
+  currentStreak: number;
+}
+
+export type FeedTab = 'global' | 'near_you' | 'by_satellite';
+
+export interface FeedPagination {
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+}

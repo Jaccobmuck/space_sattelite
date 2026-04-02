@@ -33,8 +33,15 @@ async function fetchPasses(
     const { data } = await api.get<PassesResponse>(`/api/passes?${params}`);
     return data;
   } catch (err) {
-    if (err instanceof AxiosError && (err.response?.status === 403 || err.response?.status === 401)) {
-      throw new UpgradeRequiredError('Pass Predictions');
+    if (err instanceof AxiosError) {
+      if (err.response?.status === 401) {
+        // Unauthenticated - not an upsell opportunity
+        throw new Error('Authentication required. Please log in.');
+      }
+      if (err.response?.status === 403) {
+        // Plan gating - show upgrade prompt
+        throw new UpgradeRequiredError('Pass Predictions');
+      }
     }
     throw new Error('Failed to fetch pass predictions');
   }

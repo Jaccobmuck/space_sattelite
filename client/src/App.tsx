@@ -13,6 +13,8 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import AccountPage from './pages/AccountPage';
+import Community from './pages/Community';
+import Profile from './pages/Profile';
 
 const Globe = lazy(() => import('./components/Globe/Globe'));
 const SatellitePanel = lazy(() => import('./components/panels/SatellitePanel'));
@@ -103,6 +105,8 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/community" element={<Community />} />
+          <Route path="/profile/:username" element={<Profile />} />
           <Route path="*" element={<TrackerView />} />
         </Routes>
       </QueryClientProvider>
