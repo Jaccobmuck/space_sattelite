@@ -8,12 +8,13 @@ export interface AuthRequest extends Request {
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const match = authHeader?.match(/^Bearer ([^\s]+)$/);
+  if (!match) {
     res.status(401).json({ error: 'Access token required' });
     return;
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = match[1];
   try {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { userId: number };
     const user = getUserById(payload.userId);
@@ -30,12 +31,13 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
 
 export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const match = authHeader?.match(/^Bearer ([^\s]+)$/);
+  if (!match) {
     next();
     return;
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = match[1];
   try {
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as { userId: number };
     const user = getUserById(payload.userId);

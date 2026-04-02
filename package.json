@@ -13,7 +13,13 @@
     "setup:textures": "node scripts/download-textures.js",
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
     "lint": "cd client && npm run lint",
-    "typecheck": "cd client && npm run typecheck && cd ../server && npm run typecheck"
+    "typecheck": "cd client && npm run typecheck && cd ../server && npm run typecheck",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "cd server && npm test",
+    "test:client": "cd client && npm test",
+    "test:coverage": "npm run test:server:coverage && npm run test:client:coverage",
+    "test:server:coverage": "cd server && npm run test:coverage",
+    "test:client:coverage": "cd client && npm run test:coverage"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
