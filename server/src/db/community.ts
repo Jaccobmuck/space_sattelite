@@ -653,3 +653,98 @@ function haversineDistance(
 function toRad(deg: number): number {
   return deg * (Math.PI / 180);
 }
+
+// ============================================
+// Leaderboard
+// ============================================
+
+export interface LeaderboardEntry {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar: string | null;
+  sighting_count: number;
+}
+
+export async function getLeaderboard(
+  period: 'week' | 'month' | 'all' = 'all',
+  limit: number = 20
+): Promise<LeaderboardEntry[]> {
+  // Calculate date filter based on period
+  let dateFilter: string | null = null;
+  const now = new Date();
+  
+  if (period === 'week') {
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    dateFilter = weekAgo.toISOString();
+  } else if (period === 'month') {
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    dateFilter = monthAgo.toISOString();
+  }
+
+  // Build query for public saw_it entries grouped by user
+  let query = supabaseAdmin
+    .from('journal_entries')
+    .select('user_id')
+    .eq('is_public', true)
+    .eq('outcome', 'saw_it');
+
+  if (dateFilter) {
+    query = query.gte('created_at', dateFilter);
+  }
+
+  const { data: entries, error } = await query;
+
+  if (error || !entries) {
+    logger.error('Failed to fetch leaderboard entries', {
+      period,
+      code: error?.code,
+      message: error?.message,
+    });
+    return [];
+  }
+
+  // Count sightings per user
+  const userCounts = new Map<string, number>();
+  entries.forEach((entry) => {
+    userCounts.set(entry.user_id, (userCounts.get(entry.user_id) || 0) + 1);
+  });
+
+  // Sort by count and take top N
+  const sortedUsers = Array.from(userCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit);
+
+  if (sortedUsers.length === 0) {
+    return [];
+  }
+
+  // Fetch profile info for top users
+  const userIds = sortedUsers.map(([userId]) => userId);
+  const { data: profiles } = await supabaseAdmin
+    .from('profiles')
+    .select('id, username, display_name, avatar')
+    .in('id', userIds);
+
+  if (!profiles) {
+    return [];
+  }
+
+  // Build leaderboard with profile info
+  const profileMap = new Map(profiles.map((p) => [p.id, p]));
+  
+  return sortedUsers
+    .map(([userId, count]) => {
+      const profile = profileMap.get(userId);
+      if (!profile || !profile.username) return null;
+      
+      return {
+        user_id: userId,
+        username: profile.username,
+        display_name: profile.display_name,
+        avatar: profile.avatar,
+        sighting_count: count,
+      };
+    })
+    .filter((entry): entry is LeaderboardEntry => entry !== null);
+}

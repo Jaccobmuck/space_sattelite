@@ -8,16 +8,13 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-<<<<<<< HEAD
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-=======
+    "test:coverage": "vitest run --coverage",
     "migrate": "node scripts/migrate.js up",
     "migrate:make": "node scripts/migrate.js make",
     "migrate:status": "node scripts/migrate.js status",
     "migrate:rollback": "node scripts/migrate.js rollback"
->>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",

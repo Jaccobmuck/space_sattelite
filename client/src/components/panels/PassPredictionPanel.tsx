@@ -2,15 +2,25 @@ import { memo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/appStore';
 import { usePasses, UpgradeRequiredError } from '../../hooks/usePasses';
+import { useJournalModalStore } from '../../store/journalSlice';
+import { useAuthStore } from '../../store/authStore';
 import UpgradeModal from '../ui/UpgradeModal';
 
 function PassPredictionPanel() {
   const { activePanel, setActivePanel, userLocation, selectSatellite } = useAppStore();
   const { data, isLoading, error } = usePasses();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [selectedPassIndex, setSelectedPassIndex] = useState<number | null>(null);
+  const openJournalModal = useJournalModalStore((s) => s.openModal);
+  const user = useAuthStore((s) => s.user);
 
   const isUpgradeRequired = error instanceof UpgradeRequiredError;
   const isOpen = activePanel === 'passes';
+
+  const handleLogSighting = (satelliteName: string, riseTime: string) => {
+    openJournalModal(satelliteName, riseTime);
+    setSelectedPassIndex(null);
+  };
 
   return (
     <AnimatePresence>
@@ -89,46 +99,74 @@ function PassPredictionPanel() {
                     <span>QUALITY</span>
                   </div>
                   {data.passes.map((pass, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        const satellites = useAppStore.getState().satellites;
-                        const sat = satellites.find(s => s.noradId === pass.noradId);
-                        if (sat) selectSatellite(sat);
-                      }}
-                      className={`w-full grid grid-cols-6 gap-2 text-sm p-2 rounded border transition-colors ${
-                        pass.satellite.includes('ISS')
-                          ? 'border-accent-red/50 bg-accent-red/10 hover:bg-accent-red/20'
-                          : 'border-border-glow hover:bg-white/5'
-                      }`}
-                    >
-                      <span className="text-text-primary truncate text-left">
-                        {pass.satellite.split(' ')[0]}
-                      </span>
-                      <span className="text-text-secondary">
-                        {new Date(pass.riseTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                      <span className="font-mono text-accent-cyan">
-                        {new Date(pass.riseTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <span className={`font-orbitron ${
-                        pass.maxElevation >= 60 ? 'text-accent-green' :
-                        pass.maxElevation >= 30 ? 'text-accent-cyan' :
-                        'text-text-secondary'
-                      }`}>
-                        {pass.maxElevation}°
-                      </span>
-                      <span className="text-text-secondary">
-                        {Math.round(pass.duration / 60)}m
-                      </span>
-                      <span className={`font-orbitron text-xs ${
-                        pass.quality === 'excellent' ? 'text-accent-green' :
-                        pass.quality === 'good' ? 'text-accent-cyan' :
-                        'text-text-secondary'
-                      }`}>
-                        {pass.quality.toUpperCase()}
-                      </span>
-                    </button>
+                    <div key={i} className="space-y-1">
+                      <button
+                        onClick={() => {
+                          setSelectedPassIndex(selectedPassIndex === i ? null : i);
+                          const satellites = useAppStore.getState().satellites;
+                          const sat = satellites.find(s => s.noradId === pass.noradId);
+                          if (sat) selectSatellite(sat);
+                        }}
+                        className={`w-full grid grid-cols-6 gap-2 text-sm p-2 rounded border transition-colors ${
+                          selectedPassIndex === i
+                            ? 'border-accent-blue/70 bg-accent-blue/20'
+                            : pass.satellite.includes('ISS')
+                            ? 'border-accent-red/50 bg-accent-red/10 hover:bg-accent-red/20'
+                            : 'border-border-glow hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="text-text-primary truncate text-left">
+                          {pass.satellite.split(' ')[0]}
+                        </span>
+                        <span className="text-text-secondary">
+                          {new Date(pass.riseTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                        <span className="font-mono text-accent-cyan">
+                          {new Date(pass.riseTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className={`font-orbitron ${
+                          pass.maxElevation >= 60 ? 'text-accent-green' :
+                          pass.maxElevation >= 30 ? 'text-accent-cyan' :
+                          'text-text-secondary'
+                        }`}>
+                          {pass.maxElevation}°
+                        </span>
+                        <span className="text-text-secondary">
+                          {Math.round(pass.duration / 60)}m
+                        </span>
+                        <span className={`font-orbitron text-xs ${
+                          pass.quality === 'excellent' ? 'text-accent-green' :
+                          pass.quality === 'good' ? 'text-accent-cyan' :
+                          'text-text-secondary'
+                        }`}>
+                          {pass.quality.toUpperCase()}
+                        </span>
+                      </button>
+                      {selectedPassIndex === i && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="flex gap-2 px-2 pb-2"
+                        >
+                          {user ? (
+                            <button
+                              onClick={() => handleLogSighting(pass.satellite, pass.riseTime)}
+                              className="flex-1 px-3 py-2 bg-accent-green/20 border border-accent-green/50 rounded font-orbitron text-xs text-accent-green hover:bg-accent-green/30 transition-colors"
+                            >
+                              📝 LOG SIGHTING
+                            </button>
+                          ) : (
+                            <a
+                              href="/login"
+                              className="flex-1 px-3 py-2 bg-accent-blue/20 border border-accent-blue/50 rounded font-orbitron text-xs text-accent-blue hover:bg-accent-blue/30 transition-colors text-center"
+                            >
+                              LOGIN TO LOG
+                            </a>
+                          )}
+                        </motion.div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

@@ -10,6 +10,7 @@ import {
   createComment,
   getDistinctSatellites,
   isSightingAccessible,
+  getLeaderboard,
   type FeedTab,
 } from '../db/community.js';
 import { toggleJournalEntryVisibility } from '../db/journal.js';
@@ -245,6 +246,27 @@ router.post(
     }
 
     res.status(201).json({ comment });
+  })
+);
+
+// GET /api/community/leaderboard - Top observers
+router.get(
+  '/leaderboard',
+  query('period').optional().isIn(['week', 'month', 'all']),
+  query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: errors.array()[0].msg });
+      return;
+    }
+
+    const period = (req.query.period as 'week' | 'month' | 'all') || 'all';
+    const limit = (req.query.limit as unknown as number) || 20;
+
+    const leaders = await getLeaderboard(period, limit);
+
+    res.json({ leaders });
   })
 );
 

@@ -15,6 +15,9 @@ import RegisterPage from './pages/RegisterPage';
 import AccountPage from './pages/AccountPage';
 import Community from './pages/Community';
 import Profile from './pages/Profile';
+import MySightings from './pages/MySightings';
+import Leaderboard from './pages/Leaderboard';
+import JournalEntryModalWrapper from './components/journal/JournalEntryModalWrapper';
 
 const Globe = lazy(() => import('./components/Globe/Globe'));
 const SatellitePanel = lazy(() => import('./components/panels/SatellitePanel'));
@@ -82,6 +85,7 @@ function TrackerView() {
             </Suspense>
             <TimeControls />
             <PinnedSatellitesStrip />
+            <JournalEntryModalWrapper />
           </main>
         </div>
       </div>
@@ -107,6 +111,15 @@ function App() {
           />
           <Route path="/community" element={<Community />} />
           <Route path="/profile/:username" element={<Profile />} />
+          <Route
+            path="/my-sightings"
+            element={
+              <ProtectedRoute>
+                <MySightings />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="*" element={<TrackerView />} />
         </Routes>
       </QueryClientProvider>

@@ -7,24 +7,13 @@ export interface AuthRequest extends Request {
   user?: SafeUser;
 }
 
-<<<<<<< HEAD
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  const match = authHeader?.match(/^Bearer ([^\s]+)$/);
-  if (!match) {
-=======
 export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   const token = req.cookies?.accessToken;
   if (!token) {
->>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
     res.status(401).json({ error: 'Access token required' });
     return;
   }
 
-<<<<<<< HEAD
-  const token = match[1];
-=======
->>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
   try {
     const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
 
@@ -54,24 +43,13 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-<<<<<<< HEAD
-export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  const match = authHeader?.match(/^Bearer ([^\s]+)$/);
-  if (!match) {
-=======
 export async function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
   const token = req.cookies?.accessToken;
   if (!token) {
->>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
     next();
     return;
   }
 
-<<<<<<< HEAD
-  const token = match[1];
-=======
->>>>>>> 7e55b138c5a488bbafa244a033741e2c897ce40b
   try {
     const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
 
