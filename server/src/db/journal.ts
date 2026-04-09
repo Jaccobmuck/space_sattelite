@@ -117,7 +117,9 @@ export interface JournalEntry {
   id: string;
   user_id: string;
   satellite_name: string;
+  satellite_id: string | null; // NORAD catalog ID; null for entries pre-dating migration
   pass_timestamp: string;
+  duration_seconds: number | null; // sighting duration in seconds; null if not recorded
   city: string | null;
   region: string | null;
   lat: number | null;
@@ -133,7 +135,9 @@ export interface JournalEntry {
 export interface CreateJournalEntryInput {
   user_id: string;
   satellite_name: string;
+  satellite_id?: string;
   pass_timestamp: string;
+  duration_seconds?: number;
   city?: string;
   region?: string;
   lat?: number;
@@ -167,7 +171,9 @@ export async function createJournalEntry(
     .insert({
       user_id: input.user_id,
       satellite_name: input.satellite_name,
+      satellite_id: input.satellite_id || null,
       pass_timestamp: input.pass_timestamp,
+      duration_seconds: input.duration_seconds ?? null,
       city: input.city || null,
       region: input.region || null,
       lat: input.lat ?? null,

@@ -21,7 +21,9 @@ router.use(requireAuth);
 router.post(
   '/',
   body('satellite_name').trim().notEmpty().withMessage('Satellite name is required'),
+  body('satellite_id').optional().trim(),
   body('pass_timestamp').isISO8601().withMessage('Valid pass timestamp is required'),
+  body('duration_seconds').optional().isInt({ min: 0 }).withMessage('Duration must be a non-negative integer'),
   body('outcome').isIn(['saw_it', 'missed_it', 'cloudy']).withMessage('Valid outcome is required'),
   body('star_rating').optional().isInt({ min: 1, max: 5 }).withMessage('Star rating must be 1-5'),
   body('notes').optional().isLength({ max: 280 }).withMessage('Notes must be 280 characters or less'),
@@ -49,7 +51,9 @@ router.post(
     const user = req.user!;
     const {
       satellite_name,
+      satellite_id,
       pass_timestamp,
+      duration_seconds,
       outcome,
       star_rating,
       notes,
@@ -64,7 +68,9 @@ router.post(
     const { data, error } = await createJournalEntry({
       user_id: user.id,
       satellite_name,
+      satellite_id,
       pass_timestamp,
+      duration_seconds,
       outcome,
       star_rating,
       notes,

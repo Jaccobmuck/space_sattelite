@@ -1,3 +1,8 @@
+// Vitest configuration — SENTRY server package
+// Environment : node  (no DOM)
+// Coverage    : @vitest/coverage-v8  (`npm run test:coverage`)
+// Test files  : src/**/*.test.ts  and  tests/**/*.test.ts
+// Setup file  : tests/setup.ts — sets NODE_ENV + JWT secrets before each test file
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
