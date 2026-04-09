@@ -4,7 +4,9 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import Database from 'better-sqlite3';
+// Uses the pure-JS in-memory database helper instead of better-sqlite3 so
+// these tests run without requiring the native SQLite binary.
+import Database from './helpers/inMemoryDb.js';
 
 // Test environment
 const JWT_ACCESS_SECRET = 'test-access-secret-that-is-at-least-64-characters-long-for-testing';

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+// Uses the pure-JS in-memory database helper instead of better-sqlite3 so
+// these tests run without requiring the native SQLite binary.
+import Database from './helpers/inMemoryDb.js';
 
 // Create in-memory test database
 const db = new Database(':memory:');
