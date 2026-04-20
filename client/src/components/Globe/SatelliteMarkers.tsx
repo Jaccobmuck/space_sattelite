@@ -9,6 +9,7 @@ import {
 } from 'three';
 import * as satellite from 'satellite.js';
 import { useAppStore } from '../../store/appStore';
+import { SELECTED_SATELLITE_SCALE } from '../../constants/globe';
 import type { SatelliteCategory } from '../../types';
 
 const CATEGORY_COLORS: Record<SatelliteCategory, string> = {
@@ -141,7 +142,7 @@ function SatelliteMarkers() {
 
       let scale = sat.category === 'iss' ? 3 : 1;
       if (selectedSatellite?.noradId === sat.noradId) {
-        scale *= 1.5;
+        scale *= SELECTED_SATELLITE_SCALE;
 
         // Update selected satellite position in Zustand (throttled to 1/sec)
         if (shouldUpdatePanel) {

@@ -25,6 +25,14 @@ interface AppState {
   pinnedSatellites: PinnedSatellite[];
   satrecMap: Map<number, SatRec>;
 
+  // ── Overlay visibility ────────────────────────────────────────────────────
+  /** IAU constellation stick-figure overlay visibility */
+  constellationsVisible: boolean;
+  /** Deep-sky object marker visibility */
+  dsoVisible: boolean;
+  /** Red night-vision filter for dark-adapted viewing */
+  nightVision: boolean;
+
   selectSatellite: (satellite: Satellite | null) => void;
   setActivePanel: (panel: PanelType) => void;
   setUserLocation: (location: UserLocation | null) => void;
@@ -44,6 +52,9 @@ interface AppState {
   updatePinnedGroundTrack: (noradId: number, track: GroundTrack | null) => void;
   setSatrecMap: (map: Map<number, SatRec>) => void;
   updateSelectedSatellitePosition: (lat: number, lng: number, alt: number, velocity: number) => void;
+  toggleConstellations: () => void;
+  toggleDso: () => void;
+  toggleNightVision: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -63,6 +74,9 @@ export const useAppStore = create<AppState>((set) => ({
   searchHighlightId: null,
   pinnedSatellites: [],
   satrecMap: new Map(),
+  constellationsVisible: true,
+  dsoVisible: false,
+  nightVision: false,
 
   selectSatellite: (satellite) =>
     set({
@@ -120,16 +134,13 @@ export const useAppStore = create<AppState>((set) => ({
 
   pinSatellite: (satellite) =>
     set((state) => {
-      // Check if already pinned
       if (state.pinnedSatellites.some((p) => p.satellite.noradId === satellite.noradId)) {
         return state;
       }
 
-      // Get next available color
       const usedColors = state.pinnedSatellites.map((p) => p.color);
       const availableColor = PIN_COLORS.find((c) => !usedColors.includes(c)) || PIN_COLORS[0];
 
-      // If max 3 pinned, remove oldest
       let newPinned = [...state.pinnedSatellites];
       if (newPinned.length >= 3) {
         newPinned = newPinned.slice(1);
@@ -173,4 +184,13 @@ export const useAppStore = create<AppState>((set) => ({
         },
       };
     }),
+
+  toggleConstellations: () =>
+    set((state) => ({ constellationsVisible: !state.constellationsVisible })),
+
+  toggleDso: () =>
+    set((state) => ({ dsoVisible: !state.dsoVisible })),
+
+  toggleNightVision: () =>
+    set((state) => ({ nightVision: !state.nightVision })),
 }));

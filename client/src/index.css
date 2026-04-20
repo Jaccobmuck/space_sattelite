@@ -106,6 +106,15 @@ body,
   border-color: var(--accent-blue);
 }
 
+/* Night-vision mode — red-shifted, desaturated for dark-adapted eyes */
+.night-vision {
+  filter: saturate(0.15) sepia(1) hue-rotate(320deg) brightness(0.6);
+}
+
+.night-vision canvas {
+  filter: saturate(0.2) sepia(0.8) hue-rotate(320deg) brightness(0.55);
+}
+
 /* Category colors */
 .category-weather { color: var(--accent-blue); }
 .category-comm { color: var(--accent-orange); }

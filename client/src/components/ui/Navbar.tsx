@@ -15,7 +15,7 @@ const navItems: { id: PanelType; label: string; icon: string }[] = [
 ];
 
 function Navbar() {
-  const { activePanel, setActivePanel, satellites, userLocation, setUserLocation } = useAppStore();
+  const { activePanel, setActivePanel, satellites, userLocation, setUserLocation, nightVision, toggleNightVision } = useAppStore();
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const [utcTime, setUtcTime] = useState(new Date().toISOString().slice(11, 19));
@@ -141,6 +141,22 @@ function Navbar() {
                 ? 'RETRY'
                 : 'LOCATE ME'}
             </span>
+          </motion.button>
+
+          <motion.button
+            onClick={toggleNightVision}
+            title="Toggle night vision"
+            aria-pressed={nightVision}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-all ${
+              nightVision
+                ? 'bg-accent-red/20 text-accent-red border border-accent-red/50'
+                : 'text-text-secondary hover:text-text-primary hover:bg-white/5 border border-transparent'
+            }`}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <span>🔴</span>
+            <span className="font-orbitron text-xs tracking-wide">NV</span>
           </motion.button>
 
           <div className="flex items-center gap-2 text-sm">

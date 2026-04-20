@@ -64,11 +64,13 @@ function GeolocationLoader() {
 }
 
 function TrackerView() {
+  const nightVision = useAppStore((state) => state.nightVision);
+
   return (
     <>
       <SatelliteDataLoader />
       <GeolocationLoader />
-      <div className="relative w-full h-full bg-bg-primary overflow-hidden">
+      <div className={`relative w-full h-full bg-bg-primary overflow-hidden${nightVision ? ' night-vision' : ''}`}>
         <Navbar />
         <div className="flex h-[calc(100%-56px)] mt-14">
           <Sidebar />

@@ -76,7 +76,7 @@ function TimeControls() {
         {/* Time display - only show when accelerated */}
         {isAccelerated && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-accent-cyan font-mono">
+            <span className="text-xs text-accent-cyan font-mono inline-block w-[11.5rem] text-center">
               {formatTime(simulatedTime)}
             </span>
             <button
