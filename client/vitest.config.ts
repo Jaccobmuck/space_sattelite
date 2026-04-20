@@ -1,3 +1,8 @@
+// Vitest configuration — SENTRY client package
+// Environment : jsdom  (simulates browser APIs for React component tests)
+// Coverage    : @vitest/coverage-v8  (`npm run test:coverage`)
+// Test files  : src/**/*.test.{ts,tsx}  and  tests/**/*.test.{ts,tsx}
+// Setup file  : tests/setup.ts — mounts @testing-library/jest-dom matchers + browser API mocks
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 

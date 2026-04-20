@@ -137,7 +137,9 @@ export interface JournalEntry {
   id: string;
   user_id: string;
   satellite_name: string;
+  satellite_id: string | null; // NORAD catalog ID; null for entries pre-dating migration
   pass_timestamp: string;
+  duration_seconds: number | null; // sighting duration in seconds; null if not recorded
   city: string | null;
   region: string | null;
   lat: number | null;
