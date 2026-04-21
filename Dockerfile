@@ -23,6 +23,9 @@ RUN cd server && npm run build
 # Production stage
 FROM node:20-alpine AS production
 
+# Create a non-root user/group to run the process
+RUN addgroup -S sentry && adduser -S -G sentry sentry
+
 WORKDIR /app/server
 
 # Copy server package files and install production dependencies
@@ -34,6 +37,10 @@ COPY --from=builder /app/server/dist ./dist
 
 # Copy built client to server's public directory
 COPY --from=builder /app/client/dist ./public
+
+# Transfer ownership to the non-root user before switching
+RUN chown -R sentry:sentry /app/server
+USER sentry
 
 # Expose port
 EXPOSE 3001
