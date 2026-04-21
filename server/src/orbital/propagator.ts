@@ -67,7 +67,13 @@ function propagateAt(
     if (typeof pv.position === 'boolean' || typeof pv.velocity === 'boolean') {
       return null;
     }
-    return { positionEci: pv.position as satellite.EciVec3<number>, velocityEci: pv.velocity as satellite.EciVec3<number> };
+    const pos = pv.position as satellite.EciVec3<number>;
+    const vel = pv.velocity as satellite.EciVec3<number>;
+    // satellite.js may return NaN for malformed TLEs without setting satrec.error
+    if (!isFinite(pos.x) || !isFinite(pos.y) || !isFinite(pos.z)) {
+      return null;
+    }
+    return { positionEci: pos, velocityEci: vel };
   } catch {
     return null;
   }
