@@ -22,7 +22,6 @@ client/.env
 .idea/
 *.swp
 *.swo
-*.claude
 
 # OS
 .DS_Store
@@ -43,3 +42,4 @@ coverage/
 .cache/
 Agents.md 
 CLAUDE.md
+.claude/
