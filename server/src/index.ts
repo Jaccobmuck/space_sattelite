@@ -164,7 +164,7 @@ app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: 
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info('SENTRY server started', {
     port: PORT,
     environment: NODE_ENV,
@@ -175,5 +175,26 @@ app.listen(PORT, () => {
   startTLERefreshJob();
   startAccountDeletionJob();
 });
+
+function shutdown(signal: string) {
+  logger.info(`${signal} received — shutting down gracefully`);
+  server.close((err) => {
+    if (err) {
+      logger.error('Error during server close', { error: err.message });
+      process.exit(1);
+    }
+    logger.info('Server closed');
+    process.exit(0);
+  });
+
+  // Force-exit if connections don't drain within 10 s
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;
